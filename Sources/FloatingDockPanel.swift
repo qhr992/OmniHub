@@ -1823,8 +1823,27 @@ final class FloatingDockPanel: NSPanel, EscDismissable {
 
     fileprivate func filesDropped(_ urls: [URL]) {
         ShelfPane.add(urls)
-        // Show where they went; it folds away like a hover-opened card.
-        present(.shelf, hold: false, focus: false)
+        showShelfAfterDrop()
+    }
+
+    /// Settings key: after a drop the Shelf comes to the front and stays
+    /// open until closed, like a page opened with a hotkey (default on).
+    static let shelfKeepOpenKey = "shelf.keepOpenOnDrop"
+
+    /// Shows where dropped files went. Kept in front unless switched off in
+    /// settings; then it folds away like a hover-opened card.
+    private func showShelfAfterDrop() {
+        let keep = Prefs.bool(Self.shelfKeepOpenKey, true)
+        if keep, !Self.headless { orderFrontRegardless() }
+        present(.shelf, hold: keep, focus: false)
+    }
+
+    /// Test hook: the card after a drop (page shown, kept open).
+    static func debugShowShelfAfterDrop() -> (page: Page?, held: Bool) {
+        let panel = instance()
+        panel.closeCard()
+        panel.showShelfAfterDrop()
+        return (debugPage, panel.heldOpen)
     }
 
     // MARK: Ball: drag, click, menu

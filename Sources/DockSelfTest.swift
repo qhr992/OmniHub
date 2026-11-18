@@ -331,6 +331,14 @@ enum DockSelfTest {
                       gone == 1 && !store.items.contains { $0.id == old.id }
                         && !FileManager.default.fileExists(atPath: store.url(of: old).path))
             }
+            Prefs.set(FloatingDockPanel.shelfKeepOpenKey, nil)
+            let kept = FloatingDockPanel.debugShowShelfAfterDrop()
+            Prefs.set(FloatingDockPanel.shelfKeepOpenKey, false)
+            let folding = FloatingDockPanel.debugShowShelfAfterDrop()
+            Prefs.set(FloatingDockPanel.shelfKeepOpenKey, nil)
+            check("a drop keeps the Shelf in front by default; switched off it folds away like a hover",
+                  kept.page == .shelf && kept.held && folding.page == .shelf && !folding.held,
+                  "default=\(kept) off=\(folding)")
             for item in store.items where !before.contains(item.id) { store.remove(item.id) }
             try? FileManager.default.removeItem(at: temp)
             check("test items removed again", Set(store.items.map(\.id)) == before)

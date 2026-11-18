@@ -28,6 +28,7 @@ A menu bar suite for macOS. Screenshots, pinned images, clipboard history, Now P
 
 **Shelf.**
 - Drop files on the ball to keep a copy for later, then drag them out wherever you need them.
+- After a drop the Shelf card comes to the front and stays open until you close it; this can be turned off in Settings.
 - Items expire after a configurable number of days (7 by default).
 
 **Now Playing.**
