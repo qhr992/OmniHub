@@ -6,7 +6,7 @@
 // `omnihub_media_stream`. The function never returns: it prints one JSON line
 // per state change on stdout and executes commands read from stdin
 // ("toggle", "play", "pause", "next", "prev", "seek <seconds>",
-// "shuffle <mode>", "repeat <mode>", "like", "unlike"; "clients" lists every
+// "shuffle <mode>", "repeat <mode>", "like", "unlike", "pin"; "clients" lists every
 // registered player). Which player it shows is decided in PlayerChoice.h:
 // music before video, the one just started, and otherwise the shown one for
 // as long as it plays.
@@ -73,13 +73,13 @@ static void emit(NSDictionary *payload) {
 }
 
 // The player the bridge shows (PlayerChoice.h decides): its pid (0 = none
-// yet), the path its info is read from (nil = the system's now-playing app,
-// read without a player list) and the path commands are addressed to.
-// Commands need the player spelled out: a path with no player resolves to
-// the active player of the origin, i.e. the system's now-playing app.
+// yet) and the path its info is read from (nil = the system's now-playing
+// app, read without a player list).
 static int shownPID;
 static id shownPath;
-static id shownCommandPath;
+// Who holds Now Playing, and the other players playing (pids), at the last poll.
+static int nowPlayingPID;
+static NSArray<NSNumber *> *othersPlaying;
 // The shown player does not hold Now Playing (it was at the last poll).
 static BOOL shownFollowed;
 // The shown player was controlled from OmniHub since it was chosen.
@@ -112,12 +112,6 @@ static BOOL isMusicPlayer(int pid, NSString *bundle) {
     }
     musicByPID[@(pid)] = @(music);
     return music;
-}
-
-static id commandPathFor(id client) {
-    if (!playerCreate) return nil;
-    id player = (__bridge_transfer id)playerCreate(CFSTR("MediaRemote-DefaultPlayer"), NULL);
-    return (__bridge id)playerPathCreate(getLocalOrigin(), (__bridge void *)client, (__bridge void *)player);
 }
 
 /// Item fields from a now-playing info dictionary.
@@ -171,11 +165,12 @@ static void finishPayload(NSMutableDictionary *out, int pid, BOOL playing, BOOL 
     dispatch_queue_t queue = dispatch_get_main_queue();
     out[@"pid"] = @(pid);
     out[@"playing"] = @(stateKnown ? playing : (playing || [out[@"rate"] doubleValue] > 0));
-    // 1 = a player other than the system's now-playing app. Commands are
-    // addressed to it by name; a browser or video player ignores them until
-    // it holds Now Playing itself (music apps take them).
+    // 1 = a player other than the system's now-playing app: commands do not
+    // reach it (OmniHub uses a music app's menu instead).
     out[@"followed"] = @(followed ? 1 : 0);
     out[@"music"] = @(music ? 1 : 0);
+    out[@"nowPlaying"] = @(nowPlayingPID);
+    out[@"othersPlaying"] = othersPlaying ?: @[];
     // Commands the player registered and has enabled (MediaRemote command
     // numbers). A command missing here is ignored by it.
     void (^commands)(CFArrayRef) = ^(CFArrayRef raw) {
@@ -221,6 +216,8 @@ static void pollMain(void) {
         if (!getPID) { finishPayload(out, 0, NO, NO, nil, NO, NO); return; }
         getPID(queue, ^(int pid) {
             shownPID = pid;
+            nowPlayingPID = pid;
+            othersPlaying = @[];
             BOOL music = isMusicPlayer(pid, nil);
             if (!getPlaying) { finishPayload(out, pid, NO, NO, nil, NO, music); return; }
             getPlaying(queue, ^(Boolean playing) { finishPayload(out, pid, playing, YES, nil, NO, music); });
@@ -241,7 +238,6 @@ static void pollPlayer(id path, int pid, int state, BOOL followed, BOOL music) {
 static void showSystemPlayer(void) {
     if (shownPath) shownPinned = NO;
     shownPath = nil;
-    shownCommandPath = nil;
     shownFollowed = NO;
     pollMain();
 }
@@ -291,11 +287,16 @@ static void poll(void) {
                     if (stateList[i] == PlayerStatePlaying) lastPlaying[pids[i]] = now;
                 }
                 if (pick < 0 || paths[pick] == NSNull.null) { showSystemPlayer(); return; }
+                NSMutableArray *others = [NSMutableArray array];
+                for (int i = 0; i < count; i++) {
+                    if (i != pick && stateList[i] == PlayerStatePlaying) [others addObject:pids[i]];
+                }
+                othersPlaying = others;
+                nowPlayingPID = mainPID;
                 int pid = [pids[pick] intValue];
                 if (pid != shownPID) shownPinned = NO;
                 shownPID = pid;
                 shownPath = paths[pick];
-                shownCommandPath = commandPathFor(clients[pick]) ?: shownPath;
                 shownFollowed = pick != mainIndex;
                 pollPlayer(shownPath, pid, stateList[pick], shownFollowed, music[pick]);
             };
@@ -312,34 +313,19 @@ static void poll(void) {
     });
 }
 
-/// Sends a command addressed to the shown player by name.
-static void sendToShownPath(unsigned int code, NSDictionary *options) {
-    if (!sendToPlayer || !shownCommandPath) return;
-    sendToPlayer(code, (__bridge CFDictionaryRef)options, (__bridge void *)shownCommandPath, 0,
-                 dispatch_get_main_queue(), ^(id result) {});
-}
-
-/// Runs `direct` when the shown player holds Now Playing right now, else
-/// `addressed`: the system may have handed Now Playing to another player
-/// since the last poll, and a plain command would reach that one.
-static void ifShownHoldsNowPlaying(void (^direct)(void), void (^addressed)(void)) {
-    if (shownFollowed) { addressed(); return; }
-    if (!getPID || !shownCommandPath || !sendToPlayer) { direct(); return; }
-    getPID(dispatch_get_main_queue(), ^(int pid) {
-        if (pid == shownPID) direct(); else addressed();
-    });
-}
-
-/// Sends a command to the shown player.
+/// Sends a command. MediaRemote delivers every command to the app holding
+/// Now Playing, whatever player path or client it names (measured with
+/// NetEase and a YouTube web app playing together: pause addressed to the
+/// YouTube app paused NetEase), so commands go out plainly. OmniHub reaches
+/// a music app without Now Playing through its menu instead.
 static void sendToTarget(unsigned int code, NSDictionary *options) {
     shownPinned = YES;
-    ifShownHoldsNowPlaying(^{
-        if (sendCommand) sendCommand(code, (__bridge CFDictionaryRef)options);
-        else sendToShownPath(code, options);
-    }, ^{ sendToShownPath(code, options); });
+    if (sendCommand) sendCommand(code, (__bridge CFDictionaryRef)options);
 }
 
 static void handleCommand(NSString *command) {
+    // "pin": OmniHub controlled the shown player some other way (its menu).
+    if ([command isEqualToString:@"pin"]) { shownPinned = YES; return; }
     // "clients": every app registered with now-playing (diagnostics).
     if ([command isEqualToString:@"clients"]) {
         if (!getClients) { fputs("{\"clients\":null}\n", stdout); fflush(stdout); return; }
@@ -361,11 +347,8 @@ static void handleCommand(NSString *command) {
     // "seek <seconds>": jump to an absolute position in the current item.
     if ([command hasPrefix:@"seek "]) {
         double seconds = MAX(0, [[command substringFromIndex:5] doubleValue]);
-        NSDictionary *position = @{@"kMRMediaRemoteOptionPlaybackPosition": @(seconds)};
         shownPinned = YES;
-        ifShownHoldsNowPlaying(^{
-            if (setElapsed) setElapsed(seconds); else sendToShownPath(24, position);
-        }, ^{ sendToShownPath(24, position); });
+        if (setElapsed) setElapsed(seconds);
         dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(0.3 * NSEC_PER_SEC)),
                        dispatch_get_main_queue(), ^{ poll(); });
         return;

@@ -671,7 +671,9 @@ final class FloatingDockPanel: NSPanel, EscDismissable {
             artwork.image = media.artwork ?? NSImage(systemSymbolName: "music.note", accessibilityDescription: nil)
             artworkHolder.layer?.shadowColor = (media.artwork.flatMap(Self.averageColor) ?? .black).cgColor
             let config = NSImage.SymbolConfiguration(pointSize: 18, weight: .semibold)
-            playButton.image = NSImage(systemSymbolName: media.isPlaying ? "pause.fill" : "play.fill",
+            // Pause while anything plays: pressed again it pauses the other player.
+            let anyPlaying = media.isPlaying || !media.othersPlaying.isEmpty
+            playButton.image = NSImage(systemSymbolName: anyPlaying ? "pause.fill" : "play.fill",
                                        accessibilityDescription: nil)?.withSymbolConfiguration(config)
             cardBars.isAnimating = media.isPlaying
             cardBars.alphaValue = media.isPlaying ? 1 : 0.35

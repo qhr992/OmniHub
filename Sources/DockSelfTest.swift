@@ -147,6 +147,12 @@ enum DockSelfTest {
               MediaObserver.followedReason(followedItem)?.contains("Open YouTube") == true
               && MediaObserver.followedReason(MediaObserver.NowPlaying()) == nil
               && { if case .unavailable = MediaObserver.shared.route(.playMode, for: followedItem) { return true }; return false }())
+        check("player menus: play, pause, next, previous by whole title only",
+              PlayerMenu.transport(of: "暂停") == .pause && PlayerMenu.transport(of: "播放") == .play
+              && PlayerMenu.transport(of: "下一个") == .next && PlayerMenu.transport(of: "上一个") == .previous
+              && PlayerMenu.transport(of: "Play/Pause") == .toggle
+              && PlayerMenu.transport(of: "播放模式") == nil && PlayerMenu.transport(of: "Play Next") == nil
+              && PlayerMenu.transport(of: "随机播放") == nil)
         var followedMusic = followedItem
         followedMusic.appName = "NeteaseMusic"; followedMusic.isMusic = true
         check("a music app shown while a video holds Now Playing still takes commands",
