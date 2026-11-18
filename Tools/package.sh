@@ -1,6 +1,6 @@
 #!/bin/bash
 # Builds OmniHub and wraps it in one DMG to hand to someone else:
-#   dist/OmniHub-<version>.dmg  =  OmniHub.app + an Applications shortcut + 安装说明.txt
+#   dist/OmniHub-<version>.dmg  =  OmniHub.app + an Applications shortcut + Install - 安装说明.txt
 # The recipient needs nothing else (no project, no Xcode tools).
 set -euo pipefail
 cd "$(dirname "$0")/.."
@@ -15,7 +15,21 @@ trap 'rm -rf "$STAGE"' EXIT
 
 ditto "$APP" "$STAGE/OmniHub.app"
 ln -s /Applications "$STAGE/Applications"
-cat > "$STAGE/安装说明.txt" <<TXT
+cat > "$STAGE/Install - 安装说明.txt" <<TXT
+OmniHub ${VERSION} (macOS 14 or later, Apple Silicon and Intel)
+
+1. Drag OmniHub onto the Applications folder on the right.
+2. First launch: open OmniHub from Applications. When macOS says it cannot verify
+   the developer, click Done, then open System Settings → Privacy & Security, click
+   Open Anyway next to OmniHub and confirm with your password.
+   (Or run once in Terminal: xattr -dr com.apple.quarantine /Applications/OmniHub.app)
+3. Grant the permissions it asks for: Screen Recording (required for screenshots);
+   Accessibility and Calendars as needed. Restart OmniHub after granting them.
+
+To update, drag the new version over the old one; permissions already granted are kept.
+
+----------------------------------------------------------------------
+
 OmniHub ${VERSION}（macOS 14 及以上，Intel / Apple Silicon 通用）
 
 1. 把 OmniHub 拖到右边的 Applications（应用程序）文件夹。
