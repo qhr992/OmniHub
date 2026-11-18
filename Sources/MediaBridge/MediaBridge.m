@@ -7,11 +7,14 @@
 // per state change on stdout and executes commands read from stdin
 // ("toggle", "play", "pause", "next", "prev", "seek <seconds>",
 // "shuffle <mode>", "repeat <mode>", "like", "unlike"; "clients" lists every
-// registered player). It follows the player that is playing: the system's
-// now-playing app, or another registered one while that one is paused.
+// registered player). Which player it shows is decided in PlayerChoice.h:
+// music before video, the one just started, and otherwise the shown one for
+// as long as it plays.
 
 #import <Foundation/Foundation.h>
 #import <dlfcn.h>
+#import <libproc.h>
+#import "PlayerChoice.h"
 
 typedef void (*MRGetInfoFn)(dispatch_queue_t, void (^)(CFDictionaryRef));
 typedef void (*MRGetPIDFn)(dispatch_queue_t, void (^)(int));
@@ -69,15 +72,47 @@ static void emit(NSDictionary *payload) {
     fflush(stdout);
 }
 
-// Which player the bridge follows: nil = the system's now-playing app.
-// Another registered player is followed while it plays and the system's
-// one does not (e.g. a YouTube web app playing while NetEase is paused),
-// and stays followed until some other player starts.
-static id targetPath;
-static int targetPID;
+// The player the bridge shows (PlayerChoice.h decides): its pid (0 = none
+// yet), the path its info is read from (nil = the system's now-playing app,
+// read without a player list) and the path commands are addressed to.
 // Commands need the player spelled out: a path with no player resolves to
 // the active player of the origin, i.e. the system's now-playing app.
-static id targetCommandPath;
+static int shownPID;
+static id shownPath;
+static id shownCommandPath;
+// The shown player does not hold Now Playing (it was at the last poll).
+static BOOL shownFollowed;
+// The shown player was controlled from OmniHub since it was chosen.
+static BOOL shownPinned;
+// When each player (pid) was last seen playing; a player playing again
+// after this long counts as just started.
+static NSMutableDictionary<NSNumber *, NSDate *> *lastPlaying;
+static const NSTimeInterval recentPlayWindow = 3;
+
+// Music apps: their Info.plist says so, or they are known not to.
+static NSMutableDictionary<NSNumber *, NSNumber *> *musicByPID;
+static NSSet<NSString *> *musicBundles;
+
+static BOOL isMusicPlayer(int pid, NSString *bundle) {
+    if (bundle.length && [musicBundles containsObject:bundle]) return YES;
+    NSNumber *cached = musicByPID[@(pid)];
+    if (cached) return cached.boolValue;
+    BOOL music = NO;
+    char buffer[PROC_PIDPATHINFO_MAXSIZE];
+    if (pid > 0 && proc_pidpath(pid, buffer, sizeof buffer) > 0) {
+        // The outermost app bundle (a browser helper belongs to the browser).
+        NSString *path = [NSString stringWithUTF8String:buffer];
+        NSRange app = [path rangeOfString:@".app/"];
+        if (app.location != NSNotFound) {
+            NSString *plist = [[path substringToIndex:app.location + 4]
+                               stringByAppendingPathComponent:@"Contents/Info.plist"];
+            NSDictionary *info = [NSDictionary dictionaryWithContentsOfFile:plist];
+            music = [info[@"LSApplicationCategoryType"] isEqual:@"public.app-category.music"];
+        }
+    }
+    musicByPID[@(pid)] = @(music);
+    return music;
+}
 
 static id commandPathFor(id client) {
     if (!playerCreate) return nil;
@@ -131,13 +166,16 @@ static NSMutableDictionary *payloadFromInfo(NSDictionary *info) {
 /// `stateKnown`: `playing` came from the system's playback state. Only
 /// without one does the item's rate count: QQ Music leaves the rate at 1
 /// when it pauses, so the rate alone would keep a paused song running.
-static void finishPayload(NSMutableDictionary *out, int pid, BOOL playing, BOOL stateKnown, id path) {
+static void finishPayload(NSMutableDictionary *out, int pid, BOOL playing, BOOL stateKnown, id path,
+                          BOOL followed, BOOL music) {
     dispatch_queue_t queue = dispatch_get_main_queue();
     out[@"pid"] = @(pid);
     out[@"playing"] = @(stateKnown ? playing : (playing || [out[@"rate"] doubleValue] > 0));
-    // 1 = a player other than the system's now-playing app: shown, but it
-    // ignores commands from other apps until it holds Now Playing itself.
-    out[@"followed"] = @(path != nil ? 1 : 0);
+    // 1 = a player other than the system's now-playing app. Commands are
+    // addressed to it by name; a browser or video player ignores them until
+    // it holds Now Playing itself (music apps take them).
+    out[@"followed"] = @(followed ? 1 : 0);
+    out[@"music"] = @(music ? 1 : 0);
     // Commands the player registered and has enabled (MediaRemote command
     // numbers). A command missing here is ignored by it.
     void (^commands)(CFArrayRef) = ^(CFArrayRef raw) {
@@ -180,33 +218,45 @@ static void pollMain(void) {
     dispatch_queue_t queue = dispatch_get_main_queue();
     getInfo(queue, ^(CFDictionaryRef raw) {
         NSMutableDictionary *out = payloadFromInfo((__bridge NSDictionary *)raw);
-        if (!getPID) { finishPayload(out, 0, NO, NO, nil); return; }
+        if (!getPID) { finishPayload(out, 0, NO, NO, nil, NO, NO); return; }
         getPID(queue, ^(int pid) {
-            if (!getPlaying) { finishPayload(out, pid, NO, NO, nil); return; }
-            getPlaying(queue, ^(Boolean playing) { finishPayload(out, pid, playing, YES, nil); });
+            shownPID = pid;
+            BOOL music = isMusicPlayer(pid, nil);
+            if (!getPlaying) { finishPayload(out, pid, NO, NO, nil, NO, music); return; }
+            getPlaying(queue, ^(Boolean playing) { finishPayload(out, pid, playing, YES, nil, NO, music); });
         });
     });
 }
 
-/// One registered player, by its player path.
-static void pollPlayer(id path, int pid, BOOL playing) {
+/// One registered player, by its player path: info, pid and state all from
+/// that one player, so a poll never mixes two of them.
+static void pollPlayer(id path, int pid, int state, BOOL followed, BOOL music) {
     infoForPlayer((__bridge void *)path, YES, dispatch_get_main_queue(), ^(CFDictionaryRef raw, void *unused) {
-        finishPayload(payloadFromInfo((__bridge NSDictionary *)raw), pid, playing, YES, path);
+        finishPayload(payloadFromInfo((__bridge NSDictionary *)raw), pid, state == PlayerStatePlaying,
+                      state != PlayerStateUnknown, path, followed, music);
     });
+}
+
+/// Shows the system's now-playing app, read without a player list.
+static void showSystemPlayer(void) {
+    if (shownPath) shownPinned = NO;
+    shownPath = nil;
+    shownCommandPath = nil;
+    shownFollowed = NO;
+    pollMain();
 }
 
 static void poll(void) {
     if (!getInfo) return;
     if (!getClients || !playerPathCreate || !stateForPlayer || !infoForPlayer || !getPID || !getLocalOrigin || !clientPID) {
-        targetPath = nil;
-        pollMain();
+        showSystemPlayer();
         return;
     }
     dispatch_queue_t queue = dispatch_get_main_queue();
     getPID(queue, ^(int mainPID) {
         getClients(queue, ^(CFArrayRef raw) {
             NSArray *clients = [(__bridge NSArray *)raw copy];
-            if (clients.count < 2) { targetPath = nil; pollMain(); return; }
+            if (clients.count < 2) { showSystemPlayer(); return; }
             NSMutableArray *paths = [NSMutableArray array];
             NSMutableArray *pids = [NSMutableArray array];
             NSMutableArray *states = [NSMutableArray array];
@@ -214,34 +264,40 @@ static void poll(void) {
                 id path = (__bridge id)playerPathCreate(getLocalOrigin(), (__bridge void *)client, NULL);
                 [paths addObject:path ?: NSNull.null];
                 [pids addObject:@(clientPID((__bridge void *)client))];
-                [states addObject:@0];
+                [states addObject:@(PlayerStateUnknown)];
             }
             __block NSUInteger pending = clients.count;
             __block BOOL chosen = NO;
             void (^choose)(void) = ^{
                 if (chosen) return;
                 chosen = YES;
-                NSUInteger mainIndex = [pids indexOfObject:@(mainPID)];
-                // 1 = playing (MRPlaybackState).
-                if (mainIndex != NSNotFound && [states[mainIndex] intValue] == 1) { targetPath = nil; targetCommandPath = nil; pollMain(); return; }
-                for (NSUInteger i = 0; i < paths.count; i++) {
-                    if (i == mainIndex || paths[i] == NSNull.null || [states[i] intValue] != 1) continue;
-                    targetPath = paths[i];
-                    targetPID = [pids[i] intValue];
-                    targetCommandPath = commandPathFor(clients[i]) ?: targetPath;
-                    pollPlayer(targetPath, targetPID, YES);
-                    return;
+                int count = (int)clients.count;
+                int stateList[count];
+                bool recent[count], music[count];
+                NSDate *now = NSDate.date;
+                int mainIndex = -1, shownIndex = -1;
+                for (int i = 0; i < count; i++) {
+                    int pid = [pids[i] intValue];
+                    stateList[i] = paths[i] == NSNull.null ? PlayerStateUnknown : [states[i] intValue];
+                    NSDate *seen = lastPlaying[pids[i]];
+                    recent[i] = seen && [now timeIntervalSinceDate:seen] < recentPlayWindow;
+                    NSString *bundle = clientBundle ? (__bridge NSString *)clientBundle((__bridge void *)clients[i]) : nil;
+                    music[i] = isMusicPlayer(pid, bundle);
+                    if (pid == mainPID && mainIndex < 0) mainIndex = i;
+                    if (shownPID > 0 && pid == shownPID && shownIndex < 0) shownIndex = i;
                 }
-                // Nothing plays: stay with the player followed last, if still there.
-                NSUInteger kept = targetPath ? [pids indexOfObject:@(targetPID)] : NSNotFound;
-                if (kept != NSNotFound && kept != mainIndex && paths[kept] != NSNull.null) {
-                    targetPath = paths[kept];
-                    pollPlayer(targetPath, targetPID, NO);
-                    return;
+                int pick = omnihub_choose_player(stateList, recent, music, count, mainIndex, shownIndex, shownPinned);
+                for (int i = 0; i < count; i++) {
+                    if (stateList[i] == PlayerStatePlaying) lastPlaying[pids[i]] = now;
                 }
-                targetPath = nil;
-                targetCommandPath = nil;
-                pollMain();
+                if (pick < 0 || paths[pick] == NSNull.null) { showSystemPlayer(); return; }
+                int pid = [pids[pick] intValue];
+                if (pid != shownPID) shownPinned = NO;
+                shownPID = pid;
+                shownPath = paths[pick];
+                shownCommandPath = commandPathFor(clients[pick]) ?: shownPath;
+                shownFollowed = pick != mainIndex;
+                pollPlayer(shownPath, pid, stateList[pick], shownFollowed, music[pick]);
             };
             for (NSUInteger i = 0; i < paths.count; i++) {
                 if (paths[i] == NSNull.null) { if (--pending == 0) choose(); continue; }
@@ -256,14 +312,31 @@ static void poll(void) {
     });
 }
 
-/// Sends a command to the followed player, or to the system's one.
+/// Sends a command addressed to the shown player by name.
+static void sendToShownPath(unsigned int code, NSDictionary *options) {
+    if (!sendToPlayer || !shownCommandPath) return;
+    sendToPlayer(code, (__bridge CFDictionaryRef)options, (__bridge void *)shownCommandPath, 0,
+                 dispatch_get_main_queue(), ^(id result) {});
+}
+
+/// Runs `direct` when the shown player holds Now Playing right now, else
+/// `addressed`: the system may have handed Now Playing to another player
+/// since the last poll, and a plain command would reach that one.
+static void ifShownHoldsNowPlaying(void (^direct)(void), void (^addressed)(void)) {
+    if (shownFollowed) { addressed(); return; }
+    if (!getPID || !shownCommandPath || !sendToPlayer) { direct(); return; }
+    getPID(dispatch_get_main_queue(), ^(int pid) {
+        if (pid == shownPID) direct(); else addressed();
+    });
+}
+
+/// Sends a command to the shown player.
 static void sendToTarget(unsigned int code, NSDictionary *options) {
-    if (targetPath && sendToPlayer) {
-        sendToPlayer(code, (__bridge CFDictionaryRef)options, (__bridge void *)(targetCommandPath ?: targetPath), 0,
-                     dispatch_get_main_queue(), ^(id result) {});
-    } else if (sendCommand) {
-        sendCommand(code, (__bridge CFDictionaryRef)options);
-    }
+    shownPinned = YES;
+    ifShownHoldsNowPlaying(^{
+        if (sendCommand) sendCommand(code, (__bridge CFDictionaryRef)options);
+        else sendToShownPath(code, options);
+    }, ^{ sendToShownPath(code, options); });
 }
 
 static void handleCommand(NSString *command) {
@@ -274,7 +347,9 @@ static void handleCommand(NSString *command) {
             NSMutableArray *out = [NSMutableArray array];
             for (id client in (__bridge NSArray *)list) {
                 NSString *bundle = clientBundle ? (__bridge NSString *)clientBundle((__bridge void *)client) : nil;
-                [out addObject:@{@"bundle": bundle ?: @"", @"pid": @(clientPID ? clientPID((__bridge void *)client) : 0)}];
+                int pid = clientPID ? clientPID((__bridge void *)client) : 0;
+                [out addObject:@{@"bundle": bundle ?: @"", @"pid": @(pid), @"music": @(isMusicPlayer(pid, bundle)),
+                                 @"shown": @(pid == shownPID)}];
             }
             NSData *json = [NSJSONSerialization dataWithJSONObject:@{@"clients": out} options:0 error:nil];
             fputs([[[NSString alloc] initWithData:json encoding:NSUTF8StringEncoding] UTF8String], stdout);
@@ -286,8 +361,11 @@ static void handleCommand(NSString *command) {
     // "seek <seconds>": jump to an absolute position in the current item.
     if ([command hasPrefix:@"seek "]) {
         double seconds = MAX(0, [[command substringFromIndex:5] doubleValue]);
-        if (targetPath) sendToTarget(24, @{@"kMRMediaRemoteOptionPlaybackPosition": @(seconds)});
-        else if (setElapsed) setElapsed(seconds);
+        NSDictionary *position = @{@"kMRMediaRemoteOptionPlaybackPosition": @(seconds)};
+        shownPinned = YES;
+        ifShownHoldsNowPlaying(^{
+            if (setElapsed) setElapsed(seconds); else sendToShownPath(24, position);
+        }, ^{ sendToShownPath(24, position); });
         dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(0.3 * NSEC_PER_SEC)),
                        dispatch_get_main_queue(), ^{ poll(); });
         return;
@@ -352,6 +430,12 @@ void omnihub_media_stream(void) {
         sendToPlayer = (MRSendToPlayerFn)dlsym(handle, "MRMediaRemoteSendCommandToPlayer");
         playerCreate = (MRPlayerCreateFn)dlsym(handle, "MRNowPlayingPlayerCreate");
 
+        lastPlaying = [NSMutableDictionary dictionary];
+        musicByPID = [NSMutableDictionary dictionary];
+        // Music apps whose Info.plist names another category (or none).
+        musicBundles = [NSSet setWithArray:@[@"com.soda.music", @"com.netease.163music", @"com.tencent.QQMusicMac",
+                                             @"com.spotify.client", @"com.apple.Music", @"com.apple.iTunes",
+                                             @"com.kugou.mac.Music", @"com.kuwo.KuwoMusic"]];
         const char *path = getenv("OMNIHUB_ARTWORK_PATH");
         if (path) artworkPath = [NSString stringWithUTF8String:path];
 

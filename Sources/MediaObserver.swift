@@ -29,9 +29,14 @@ final class MediaObserver {
         var pid: pid_t = 0
         /// MediaRemote commands the player accepts; nil = not reported.
         var commands: Set<Int>?
-        /// Shown because it plays while another app holds the system's Now
-        /// Playing; such a player takes no commands from other apps.
+        /// Shown while another app holds the system's Now Playing (music
+        /// before video, or it plays and that one does not). A browser or
+        /// video player takes no commands from other apps then.
         var isFollowed = false
+        /// A music app (not a browser or video player): shown first when
+        /// music and a video play together, and takes commands addressed to
+        /// it even without holding Now Playing.
+        var isMusic = false
         /// Playback position `elapsed` as of `anchor`; -1 when unknown.
         var elapsed: Double = -1
         var anchor = Date()
@@ -171,6 +176,7 @@ final class MediaObserver {
         next.liked = liked < 0 ? nil : liked == 1
         next.commands = (object["commands"] as? [NSNumber]).map { Set($0.map(\.intValue)) }
         next.isFollowed = (object["followed"] as? NSNumber)?.boolValue ?? false
+        next.isMusic = (object["music"] as? NSNumber)?.boolValue ?? false
 
         let key = object["artwork"] as? String ?? ""
         if key.isEmpty {
@@ -398,7 +404,7 @@ final class MediaObserver {
 
     /// Why playback commands cannot reach the shown player, if they cannot.
     static func followedReason(_ item: NowPlaying?) -> String? {
-        guard let item, item.isFollowed else { return nil }
+        guard let item, item.isFollowed, !item.isMusic else { return nil }
         let app = item.appName.isEmpty ? "This player" : item.appName
         return "\(app) takes no playback commands from other apps while another player holds Now Playing. Open \(app) to control it."
     }
@@ -413,12 +419,27 @@ final class MediaObserver {
 
     func togglePlayPause() {
         if blockedByFollow() { return }
+        let before = current
         send("toggle", code: 2)
         // A held item gets no report back: look at the audio output instead.
         if isHolding {
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.8) { [weak self] in self?.refreshHeld() }
         }
+        // A music app addressed by name while another player holds Now
+        // Playing: if it did not react, say so rather than fail silently.
+        if let before, before.isFollowed, before.isMusic {
+            DispatchQueue.main.asyncAfter(deadline: .now() + Self.commandCheckDelay) { [weak self] in
+                guard let self, let now = self.current, now.pid == before.pid,
+                      now.isPlaying == before.isPlaying else { return }
+                let app = before.appName.isEmpty ? "The player" : before.appName
+                NotificationCenter.default.post(name: Self.controlUnavailable,
+                                                object: "\(app) did not respond. Open \(app) to control it.")
+            }
+        }
     }
+
+    /// How long a player gets to react to play / pause before OmniHub says it did not.
+    private static let commandCheckDelay: TimeInterval = 1.5
     func nextTrack() { if !blockedByFollow() { send("next", code: 4) } }
     func previousTrack() { if !blockedByFollow() { send("prev", code: 5) } }
 

@@ -11,6 +11,11 @@ swiftc -O -swift-version 5 -target "$TARGET" -o build/capture-test \
 ./build/capture-test
 
 echo
+echo "==> which player the now-playing bridge shows"
+clang -O -Wall -o build/player-choice-test Tools/player-choice-test/main.c
+./build/player-choice-test
+
+echo
 echo "==> scroll stitcher (synthetic frames)"
 swiftc -O -swift-version 5 -target "$TARGET" -o build/stitch-test \
   Sources/ScrollStitcher.swift Tools/stitch/main.swift

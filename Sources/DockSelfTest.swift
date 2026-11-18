@@ -147,6 +147,11 @@ enum DockSelfTest {
               MediaObserver.followedReason(followedItem)?.contains("Open YouTube") == true
               && MediaObserver.followedReason(MediaObserver.NowPlaying()) == nil
               && { if case .unavailable = MediaObserver.shared.route(.playMode, for: followedItem) { return true }; return false }())
+        var followedMusic = followedItem
+        followedMusic.appName = "NeteaseMusic"; followedMusic.isMusic = true
+        check("a music app shown while a video holds Now Playing still takes commands",
+              MediaObserver.followedReason(followedMusic) == nil
+              && { if case .unavailable = MediaObserver.shared.route(.playMode, for: followedMusic) { return false }; return true }())
 
         // ---- progress bar: press, drag and release plays from there
         var track = song
