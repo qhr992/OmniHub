@@ -460,7 +460,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             dock("top-tasks", 0.5, 1, true, "tasks")
             report.append("activity \(FloatingDockPanel.debugActivity)")
             report.append("agenda   \(FloatingDockPanel.agenda.debugState)")
-            for tab in [0, 1, 5, 7] {
+            for tab in [0, 1, 3, 5, 7] {
                 FloatingDockPanel.open(.settings, toggle: false, settingsTab: tab)
                 report.append("settings-\(tab): " + FloatingDockPanel.debugRender(to: file("dock-settings-\(tab).png"),
                                                                               x: 0.5, y: 1, expanded: true, page: "settings"))

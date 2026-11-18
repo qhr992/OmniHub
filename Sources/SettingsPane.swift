@@ -320,7 +320,9 @@ final class SettingsPane: NSView, DockPage {
             heading("Shelf"),
             row(label("Keep files for"), PrefPopup(key: "shelf.days", fallback: 7,
                                                  values: ShelfStore.retentionChoices, suffix: "days")),
-            hint("Drop files on the dock ball to keep a copy on the Shelf. Older ones are deleted automatically.")
+            PrefCheckbox("Keep Shelf in front after a drop", key: FloatingDockPanel.shelfKeepOpenKey, fallback: true),
+            hint("Drop files on the dock ball to keep a copy on the Shelf. Older ones are deleted automatically. "
+                 + "Off: the Shelf folds away when the pointer leaves, like a hover-opened card.")
         ])
 
         // Agenda
