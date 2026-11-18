@@ -37,6 +37,10 @@ final class MediaObserver {
         /// music and a video play together, and takes commands addressed to
         /// it even without holding Now Playing.
         var isMusic = false
+        /// Who holds the system's Now Playing (system commands reach only
+        /// that app), and the other players playing at the same time.
+        var nowPlayingPID: pid_t = 0
+        var othersPlaying: [pid_t] = []
         /// Playback position `elapsed` as of `anchor`; -1 when unknown.
         var elapsed: Double = -1
         var anchor = Date()
@@ -177,6 +181,8 @@ final class MediaObserver {
         next.commands = (object["commands"] as? [NSNumber]).map { Set($0.map(\.intValue)) }
         next.isFollowed = (object["followed"] as? NSNumber)?.boolValue ?? false
         next.isMusic = (object["music"] as? NSNumber)?.boolValue ?? false
+        next.nowPlayingPID = (object["nowPlaying"] as? NSNumber)?.int32Value ?? 0
+        next.othersPlaying = (object["othersPlaying"] as? [NSNumber])?.map(\.int32Value) ?? []
 
         let key = object["artwork"] as? String ?? ""
         if key.isEmpty {
@@ -375,6 +381,7 @@ final class MediaObserver {
         emptySince = nil
         let signature = "\(next.title)|\(next.artist)|\(next.isPlaying)|\(next.appName)|\(extraSignature)"
             + "|\(next.shuffleMode)|\(next.repeatMode)|\(next.liked.map { "\($0)" } ?? "-")"
+            + "|\(next.othersPlaying)|\(next.isFollowed)"
         current = next.hasContent ? next : nil
         guard signature != lastSignature else { return }
         lastSignature = signature
@@ -397,7 +404,8 @@ final class MediaObserver {
             try? bridgeInput.write(contentsOf: Data((name + "\n").utf8))
             return
         }
-        guard let sendCommand else { return }
+        // Bridge-only notes (code < 0, e.g. "pin") have no MediaRemote command.
+        guard code >= 0, let sendCommand else { return }
         _ = sendCommand(code, options.map { $0 as CFDictionary })
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.35) { [weak self] in self?.refreshDirect() }
     }
@@ -417,31 +425,76 @@ final class MediaObserver {
         return true
     }
 
+    /// Play / pause by priority: the shown player (music before video) is
+    /// paused first; pressed again while another player still plays, that
+    /// one is paused; with nothing playing the shown player plays.
     func togglePlayPause() {
-        if blockedByFollow() { return }
-        let before = current
-        send("toggle", code: 2)
-        // A held item gets no report back: look at the audio output instead.
-        if isHolding {
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.8) { [weak self] in self?.refreshHeld() }
-        }
-        // A music app addressed by name while another player holds Now
-        // Playing: if it did not react, say so rather than fail silently.
-        if let before, before.isFollowed, before.isMusic {
-            DispatchQueue.main.asyncAfter(deadline: .now() + Self.commandCheckDelay) { [weak self] in
-                guard let self, let now = self.current, now.pid == before.pid,
-                      now.isPlaying == before.isPlaying else { return }
-                let app = before.appName.isEmpty ? "The player" : before.appName
-                NotificationCenter.default.post(name: Self.controlUnavailable,
-                                                object: "\(app) did not respond. Open \(app) to control it.")
-            }
+        guard let item = current else { send("toggle", code: 2); return }
+        if item.isPlaying {
+            transport(.pause, on: item)
+        } else if let other = item.othersPlaying.first {
+            pauseOther(other, shown: item)
+        } else {
+            transport(.play, on: item)
         }
     }
 
-    /// How long a player gets to react to play / pause before OmniHub says it did not.
-    private static let commandCheckDelay: TimeInterval = 1.5
-    func nextTrack() { if !blockedByFollow() { send("next", code: 4) } }
-    func previousTrack() { if !blockedByFollow() { send("prev", code: 5) } }
+    func nextTrack() {
+        guard let item = current else { send("next", code: 4); return }
+        transport(.next, on: item)
+    }
+
+    func previousTrack() {
+        guard let item = current else { send("prev", code: 5); return }
+        transport(.previous, on: item)
+    }
+
+    /// System commands reach only the app holding Now Playing; a music app
+    /// without it is driven through its menu, anything else says why not.
+    private func transport(_ action: PlayerMenu.Transport, on item: NowPlaying) {
+        if !item.isFollowed {
+            switch action {
+            case .play: send("play", code: 0)
+            case .pause: send("pause", code: 1)
+            case .toggle: send("toggle", code: 2)
+            case .next: send("next", code: 4)
+            case .previous: send("prev", code: 5)
+            }
+            // A held item gets no report back: look at the audio output instead.
+            if isHolding {
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.8) { [weak self] in self?.refreshHeld() }
+            }
+            return
+        }
+        if blockedByFollow() { return }
+        let app = item.appName.isEmpty ? "The player" : item.appName
+        guard PlayerMenu.isTrusted else {
+            unavailable("\(app) does not hold Now Playing. Allow Accessibility (Settings → General) so OmniHub can use its menu.")
+            return
+        }
+        let scan = menuEntries(for: item, rescan: true)
+        guard let entry = PlayerMenu.transportTarget(scan.entries, action), PlayerMenu.press(entry, in: scan) else {
+            unavailable("\(app) does not hold Now Playing and has no menu item for this.")
+            return
+        }
+        debugTransportHook?(entry.title)
+        send("pin", code: -1)
+    }
+
+    /// The shown player is paused but another one still plays.
+    private func pauseOther(_ pid: pid_t, shown item: NowPlaying) {
+        if pid == item.nowPlayingPID {
+            send("pause", code: 1)
+            return
+        }
+        func name(_ pid: pid_t) -> String { Self.owningApp(of: pid)?.localizedName ?? "The other player" }
+        let holder = item.nowPlayingPID > 0 ? name(item.nowPlayingPID) : "another app"
+        NotificationCenter.default.post(name: Self.controlUnavailable,
+                                        object: "\(name(pid)) can't be paused from OmniHub while \(holder) holds Now Playing. Pause it in its own window.")
+    }
+
+    /// Test hook: the menu item a transport command pressed.
+    var debugTransportHook: ((String) -> Void)?
 
     /// The three play modes offered by the player button.
     enum PlayMode: String { case order, repeatOne, shuffle }

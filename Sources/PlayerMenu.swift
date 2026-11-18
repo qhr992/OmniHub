@@ -52,7 +52,33 @@ enum PlayerMenu {
     }
 
     static func isRelevant(_ title: String) -> Bool {
-        isLike(title) || isUnlike(title) || mode(of: title) != nil
+        isLike(title) || isUnlike(title) || mode(of: title) != nil || transport(of: title) != nil
+    }
+
+    /// Play / pause / next / previous items: how OmniHub controls a music app
+    /// that does not hold Now Playing (system commands reach only the one that does).
+    enum Transport: Equatable { case play, pause, toggle, next, previous }
+
+    static let transportWords: [(Transport, [String])] = [
+        (.toggle, ["播放/暂停", "Play/Pause", "Play / Pause"]),
+        (.pause, ["暂停", "Pause"]),
+        (.play, ["播放", "Play"]),
+        (.next, ["下一个", "下一首", "Next", "Next Track", "Next Song"]),
+        (.previous, ["上一个", "上一首", "Previous", "Previous Track", "Previous Song"])
+    ]
+
+    /// Whole titles only: "播放模式" or "Play Next" are not transport items.
+    static func transport(of title: String) -> Transport? {
+        let trimmed = title.trimmingCharacters(in: .whitespaces)
+        return transportWords.first { $0.1.contains { $0.caseInsensitiveCompare(trimmed) == .orderedSame } }?.0
+    }
+
+    /// The item that does `wanted`; play / pause fall back to a play/pause item.
+    static func transportTarget(_ entries: [Entry], _ wanted: Transport) -> Entry? {
+        let usable = entries.filter(\.enabled)
+        if let item = usable.first(where: { transport(of: $0.title) == wanted }) { return item }
+        guard wanted == .play || wanted == .pause else { return nil }
+        return usable.first { transport(of: $0.title) == .toggle }
     }
 
     /// The mode whose menu item carries the check mark.
