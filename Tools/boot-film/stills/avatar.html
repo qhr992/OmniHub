@@ -1,0 +1,241 @@
+<!doctype html>
+<!-- Avatar (512×512): Lan's head and shoulders; the dock ball crops it round. -->
+<html><head><meta charset="utf-8"><style>
+  html, body { margin: 0; width: 512px; height: 512px; overflow: hidden; }
+  body { background: radial-gradient(circle at 50% 42%, #f1f6f4 0%, #d3e3e0 52%, #9fbfba 100%); position: relative; }
+  #lan { position: absolute; left: -119px; top: -78px; width: 750px; height: 1000px; }
+</style></head><body>
+  <svg id="lan" viewBox="0 0 600 800">
+<!--CHARACTER-->
+  <!-- Lan (岚, "mountain mist"): OmniHub's keeper. Original design.
+       Layer ids are animated by compositions/boot.html — keep them. -->
+  <defs>
+    <linearGradient id="ln-hair" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#3A4452"/><stop offset="0.55" stop-color="#252C38"/><stop offset="1" stop-color="#181D27"/>
+    </linearGradient>
+    <linearGradient id="ln-hairBack" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#2A313D"/><stop offset="0.7" stop-color="#1B2029"/><stop offset="1" stop-color="#2D4A50"/>
+    </linearGradient>
+    <linearGradient id="ln-sheen" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0" stop-color="#7FB9B6" stop-opacity="0"/><stop offset="0.5" stop-color="#9FD3CF" stop-opacity="0.55"/><stop offset="1" stop-color="#7FB9B6" stop-opacity="0"/>
+    </linearGradient>
+    <linearGradient id="ln-iris" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#173D40"/><stop offset="0.45" stop-color="#2F7C78"/><stop offset="0.8" stop-color="#6CC2B8"/><stop offset="1" stop-color="#CBEDE4"/>
+    </linearGradient>
+    <linearGradient id="ln-robe" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#5FB8B0"/><stop offset="0.55" stop-color="#3C918C"/><stop offset="1" stop-color="#25686A"/>
+    </linearGradient>
+    <linearGradient id="ln-sleeve" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#6CC3BA"/><stop offset="1" stop-color="#2E7A78"/>
+    </linearGradient>
+    <linearGradient id="ln-gauze" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#EAF5F2" stop-opacity="0.85"/><stop offset="1" stop-color="#CFE6E1" stop-opacity="0.35"/>
+    </linearGradient>
+    <linearGradient id="ln-skin" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#FFF4EE"/><stop offset="1" stop-color="#F9E0D6"/>
+    </linearGradient>
+    <radialGradient id="ln-blush" cx="0.5" cy="0.5" r="0.5">
+      <stop offset="0" stop-color="#F29A9A" stop-opacity="0.55"/><stop offset="1" stop-color="#F29A9A" stop-opacity="0"/>
+    </radialGradient>
+    <linearGradient id="ln-tassel" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#3FB5AA"/><stop offset="1" stop-color="#9BE0D6"/>
+    </linearGradient>
+    <clipPath id="ln-eyeL"><path d="M216 304 C228 286 266 284 280 298 C282 320 272 342 248 344 C226 342 214 324 216 304 Z"/></clipPath>
+    <clipPath id="ln-eyeR"><path d="M384 304 C372 286 334 284 320 298 C318 320 328 342 352 344 C374 342 386 324 384 304 Z"/></clipPath>
+    <!-- a five-petal blossom, reused in the hair and on the robe -->
+    <g id="ln-flower">
+      <g fill="#FBFDFC" stroke="#9DB7B4" stroke-width="1.4">
+        <path d="M0 0 C-7 -8 -6 -20 0 -24 C6 -20 7 -8 0 0 Z"/>
+        <path d="M0 0 C-7 -8 -6 -20 0 -24 C6 -20 7 -8 0 0 Z" transform="rotate(72)"/>
+        <path d="M0 0 C-7 -8 -6 -20 0 -24 C6 -20 7 -8 0 0 Z" transform="rotate(144)"/>
+        <path d="M0 0 C-7 -8 -6 -20 0 -24 C6 -20 7 -8 0 0 Z" transform="rotate(216)"/>
+        <path d="M0 0 C-7 -8 -6 -20 0 -24 C6 -20 7 -8 0 0 Z" transform="rotate(288)"/>
+      </g>
+      <circle r="4.5" fill="#E2C46E" stroke="none"/>
+    </g>
+  </defs>
+
+  <g stroke="#1E2A30" stroke-width="2.4" stroke-linejoin="round" stroke-linecap="round">
+    <!-- hair, back layer: long, loosely waving down past the waist -->
+    <g id="lm-hair-back">
+      <path d="M176 246 C150 290 142 330 150 370 C158 410 160 440 146 480 C132 520 136 560 148 600 C160 640 140 690 104 748
+               C140 740 164 714 178 682 C186 722 206 754 236 782 L364 782 C394 754 414 722 422 682 C436 714 460 740 496 748
+               C460 690 440 640 452 600 C464 560 468 520 454 480 C440 440 442 410 450 370 C458 330 450 290 424 246
+               C404 148 196 148 176 246 Z" fill="url(#ln-hairBack)"/>
+      <g fill="none" stroke-width="2">
+        <path d="M168 330 C160 380 176 420 162 470 C148 520 156 570 166 610 C174 650 158 690 130 730" stroke="#3B4A55"/>
+        <path d="M432 330 C440 380 424 420 438 470 C452 520 444 570 434 610 C426 650 442 690 470 730" stroke="#3B4A55"/>
+        <path d="M190 560 C196 620 186 680 206 740" stroke="#3B4A55"/>
+        <path d="M410 560 C404 620 414 680 394 740" stroke="#3B4A55"/>
+      </g>
+      <path d="M160 400 C168 440 150 480 146 520 C142 560 158 590 160 620" fill="none" stroke="url(#ln-sheen)" stroke-width="8"/>
+      <path d="M440 400 C432 440 450 480 454 520 C458 560 442 590 440 620" fill="none" stroke="url(#ln-sheen)" stroke-width="8"/>
+    </g>
+
+    <!-- body: cross-collared turquoise robe, gauze over-layer, embroidered collar -->
+    <g id="lm-body">
+      <path d="M300 432 C238 432 194 452 170 488 C146 526 138 610 126 800 L474 800 C462 610 454 526 430 488 C406 452 362 432 300 432 Z" fill="url(#ln-robe)"/>
+      <!-- gauze over-robe edges -->
+      <path d="M170 488 C150 540 146 640 136 800 L190 800 C186 690 190 580 206 504 Z" fill="url(#ln-gauze)" stroke="none"/>
+      <path d="M430 488 C450 540 454 640 464 800 L410 800 C414 690 410 580 394 504 Z" fill="url(#ln-gauze)" stroke="none"/>
+      <!-- inner white collar -->
+      <path d="M264 440 L300 520 L336 440 C326 436 312 434 300 434 C288 434 274 436 264 440 Z" fill="#F4FAF8"/>
+      <!-- embroidered collar bands, right over left -->
+      <path d="M252 444 L300 540 L318 520 L272 440 Z" fill="#1F5C5E"/>
+      <path d="M348 444 L300 540 L240 640 L222 626 L300 512 L330 440 Z" fill="#1F5C5E"/>
+      <g fill="none" stroke="#E0C26A" stroke-width="1.6">
+        <path d="M262 446 L300 528"/><path d="M340 446 L300 520 L232 634"/>
+        <path d="M268 470 q6 -4 8 2 q2 6 8 2"/><path d="M280 496 q6 -4 8 2 q2 6 8 2"/>
+        <path d="M318 476 q-6 -4 -8 2 q-2 6 -8 2"/><path d="M290 548 q-6 -4 -8 2 q-2 6 -8 2"/><path d="M268 586 q-6 -4 -8 2 q-2 6 -8 2"/>
+      </g>
+      <path d="M232 660 C226 710 222 760 220 800 M370 660 C376 710 380 760 384 800 M300 668 C298 720 300 770 302 800" fill="none" stroke="#1F5C5E" stroke-width="1.6" opacity="0.4"/>
+      <!-- sash -->
+      <path d="M176 610 C240 628 360 628 424 610 L428 650 C362 668 238 668 172 650 Z" fill="#E9F3F0"/>
+      <path d="M180 628 C240 644 360 644 420 628" fill="none" stroke="#E0C26A" stroke-width="2"/>
+      <!-- jade pendant on a thread, tassel below -->
+      <path d="M318 652 L318 690" fill="none" stroke="#C25B4B" stroke-width="2"/>
+      <circle cx="318" cy="702" r="12" fill="#BFE6DD" stroke="#2F7C78" stroke-width="2"/>
+      <circle cx="318" cy="702" r="4" fill="none" stroke="#2F7C78" stroke-width="2"/>
+      <path d="M312 716 L310 760 M318 716 L318 764 M324 716 L326 760" fill="none" stroke="#C25B4B" stroke-width="2"/>
+      <!-- a few embroidered blossoms on the robe -->
+      <use href="#ln-flower" transform="translate(392 724) scale(0.7)"/>
+      <use href="#ln-flower" transform="translate(212 742) scale(0.55)"/>
+      <path d="M392 724 C408 700 420 690 440 688" fill="none" stroke="#E0C26A" stroke-width="1.6"/>
+    </g>
+
+    <!-- neck -->
+    <path d="M278 396 L278 446 C292 454 308 454 322 446 L322 396 Z" fill="#F6D6CA"/>
+    <path d="M278 404 C292 418 308 418 322 404 L322 396 L278 396 Z" fill="#EBC0B2" stroke="none"/>
+
+    <!-- head (everything that turns with the head) -->
+    <g id="lm-head">
+      <path d="M188 284 C188 214 236 180 300 180 C364 180 412 214 412 284 C412 350 368 406 300 414 C232 406 188 350 188 284 Z" fill="url(#ln-skin)"/>
+      <!-- ears with turquoise tassel earrings -->
+      <path d="M190 300 C176 296 172 320 186 334" fill="#F6D6CA"/>
+      <path d="M410 300 C424 296 428 320 414 334" fill="#F6D6CA"/>
+            <g stroke="none">
+        <ellipse cx="232" cy="356" rx="28" ry="13" fill="url(#ln-blush)"/>
+        <ellipse cx="368" cy="356" rx="28" ry="13" fill="url(#ln-blush)"/>
+      </g>
+      <!-- brows: thin, softly arched -->
+      <path d="M226 272 C240 264 258 264 270 270" fill="none" stroke="#3A3F4C" stroke-width="3"/>
+      <path d="M330 270 C342 264 360 264 374 272" fill="none" stroke="#3A3F4C" stroke-width="3"/>
+
+      <!-- eyes: open -->
+      <g id="lm-eyes-open">
+        <g id="lm-eye-l">
+          <path d="M216 304 C228 286 266 284 280 298 C282 320 272 342 248 344 C226 342 214 324 216 304 Z" fill="#FCFEFD" stroke="none"/>
+          <g clip-path="url(#ln-eyeL)" stroke="none">
+            <ellipse cx="250" cy="320" rx="20" ry="25" fill="url(#ln-iris)"/>
+            <ellipse cx="250" cy="323" rx="8" ry="12" fill="#102628"/>
+            <circle cx="241" cy="309" r="6.5" fill="#FFFFFF"/>
+            <circle cx="258" cy="333" r="3" fill="#FFFFFF" opacity="0.85"/>
+            <path d="M216 296 C230 290 266 290 282 300 L282 308 C266 300 230 300 216 308 Z" fill="#1E2A30" opacity="0.18"/>
+          </g>
+          <path d="M210 306 C222 282 270 280 284 298" fill="none" stroke="#1E2A30" stroke-width="6.5"/>
+          <path d="M212 304 L198 300" stroke="#1E2A30" stroke-width="4"/>
+          <path d="M214 312 L203 312" stroke="#1E2A30" stroke-width="3"/>
+          <path d="M232 342 C242 346 256 346 266 340" fill="none" stroke="#B88A86" stroke-width="1.6"/>
+        </g>
+        <g id="lm-eye-r">
+          <path d="M384 304 C372 286 334 284 320 298 C318 320 328 342 352 344 C374 342 386 324 384 304 Z" fill="#FCFEFD" stroke="none"/>
+          <g clip-path="url(#ln-eyeR)" stroke="none">
+            <ellipse cx="350" cy="320" rx="20" ry="25" fill="url(#ln-iris)"/>
+            <ellipse cx="350" cy="323" rx="8" ry="12" fill="#102628"/>
+            <circle cx="341" cy="309" r="6.5" fill="#FFFFFF"/>
+            <circle cx="358" cy="333" r="3" fill="#FFFFFF" opacity="0.85"/>
+            <path d="M384 296 C370 290 334 290 318 300 L318 308 C334 300 370 300 384 308 Z" fill="#1E2A30" opacity="0.18"/>
+          </g>
+          <path d="M390 306 C378 282 330 280 316 298" fill="none" stroke="#1E2A30" stroke-width="6.5"/>
+          <path d="M388 304 L402 300" stroke="#1E2A30" stroke-width="4"/>
+          <path d="M386 312 L397 312" stroke="#1E2A30" stroke-width="3"/>
+          <path d="M368 342 C358 346 344 346 334 340" fill="none" stroke="#B88A86" stroke-width="1.6"/>
+        </g>
+      </g>
+      <!-- eyes: gently closed (a calm smile) and a wink (right eye only) -->
+      <g id="lm-eyes-closed" opacity="0">
+        <path d="M218 318 C232 330 264 330 278 316" fill="none" stroke="#1E2A30" stroke-width="5"/>
+        <path d="M218 318 L206 314" stroke="#1E2A30" stroke-width="3.5"/>
+        <path d="M322 316 C336 330 368 330 382 318" fill="none" stroke="#1E2A30" stroke-width="5"/>
+        <path d="M382 318 L394 314" stroke="#1E2A30" stroke-width="3.5"/>
+      </g>
+      <g id="lm-wink-r" opacity="0">
+        <path d="M322 316 C336 330 368 330 382 318" fill="none" stroke="#1E2A30" stroke-width="5"/>
+        <path d="M382 318 L394 314" stroke="#1E2A30" stroke-width="3.5"/>
+      </g>
+
+      <!-- nose and mouths -->
+      <path d="M302 352 L298 360" fill="none" stroke="#D9A898" stroke-width="2"/>
+      <path id="lm-mouth-smile" d="M288 378 C294 384 306 384 312 378" fill="none" stroke="#B5534E" stroke-width="3"/>
+      <path id="lm-mouth-open" opacity="0" d="M287 375 C293 374 307 374 313 375 C311 390 289 390 287 375 Z" fill="#D46F6A" stroke="#9C4440" stroke-width="2"/>
+
+      <!-- long side locks, waving -->
+      <path d="M190 250 C172 300 186 340 174 384 C162 428 186 462 172 506 C166 528 170 550 184 566 C186 538 198 520 202 494 C208 456 196 420 204 380 C210 340 204 300 212 270 Z" fill="url(#ln-hair)"/>
+      <path d="M410 250 C428 300 414 340 426 384 C438 428 414 462 428 506 C434 528 430 550 416 566 C414 538 402 520 398 494 C392 456 404 420 396 380 C390 340 396 300 388 270 Z" fill="url(#ln-hair)"/>
+      <path d="M186 300 C180 350 192 400 182 450 C176 480 180 510 186 530" fill="none" stroke="#4A5868" stroke-width="1.6"/>
+      <path d="M414 300 C420 350 408 400 418 450 C424 480 420 510 414 530" fill="none" stroke="#4A5868" stroke-width="1.6"/>
+      <g id="ln-earring-l">
+        <path d="M190 334 L190 350" fill="none" stroke="#C9A548" stroke-width="2"/>
+        <circle cx="190" cy="354" r="5.5" fill="#E0C26A" stroke="#9C7C2E" stroke-width="1.2"/>
+        <circle cx="190" cy="368" r="6" fill="#7FD0C6" stroke="#2A8C84" stroke-width="1.4"/>
+        <path d="M183 376 L181 424 L190 432 L199 424 L197 376 Z" fill="url(#ln-tassel)" stroke="#2A8C84" stroke-width="1.4"/>
+        <path d="M186 384 L185 424 M190 382 L190 428 M194 384 L195 424" fill="none" stroke="#2A8C84" stroke-width="1"/>
+        <path d="M182 378 L198 378" fill="none" stroke="#E0C26A" stroke-width="2"/>
+      </g>
+      <g id="ln-earring-r">
+        <path d="M410 334 L410 350" fill="none" stroke="#C9A548" stroke-width="2"/>
+        <circle cx="410" cy="354" r="5.5" fill="#E0C26A" stroke="#9C7C2E" stroke-width="1.2"/>
+        <circle cx="410" cy="368" r="6" fill="#7FD0C6" stroke="#2A8C84" stroke-width="1.4"/>
+        <path d="M403 376 L401 424 L410 432 L419 424 L417 376 Z" fill="url(#ln-tassel)" stroke="#2A8C84" stroke-width="1.4"/>
+        <path d="M406 384 L405 424 M410 382 L410 428 M414 384 L415 424" fill="none" stroke="#2A8C84" stroke-width="1"/>
+        <path d="M402 378 L418 378" fill="none" stroke="#E0C26A" stroke-width="2"/>
+      </g>
+      <!-- bangs: parted a little off centre, wispy strands -->
+      <path id="lm-bangs" d="M182 278 C176 184 236 146 300 146 C364 146 424 184 418 278
+         L410 300 Q404 252 386 226 Q388 262 380 292 Q366 244 344 214 Q344 250 334 276 Q320 230 300 206
+         Q292 236 272 262 Q272 236 262 220 Q250 254 232 280 Q230 250 222 236 Q210 262 194 300 Q194 280 182 278 Z" fill="url(#ln-hair)"/>
+      <path d="M300 150 C292 176 286 192 276 206" fill="none" stroke="#4A5868" stroke-width="2"/>
+      <path d="M232 176 C258 162 292 158 322 162" fill="none" stroke="#A9D6D1" stroke-width="5" opacity="0.5"/>
+      <!-- a single stray strand (it lags behind the head) -->
+      <path id="lm-ahoge" d="M300 150 C290 120 304 96 330 96 C314 104 306 118 312 148 Z" fill="url(#ln-hair)"/>
+
+      <!-- hair ornaments, viewer's right: white blossoms, two pale feathers, a gold pin with a tiny bell -->
+      <g id="ln-ornament">
+        <path d="M396 216 C428 170 470 136 516 118 C494 150 462 190 414 234 Z" fill="#F4F8F7" stroke="#9DB7B4" stroke-width="1.4"/>
+        <path d="M402 222 C440 182 478 150 512 124" fill="none" stroke="#8FA9A6" stroke-width="1.4"/>
+        <g fill="none" stroke="#B9CCCA" stroke-width="1"><path d="M424 196 L432 176"/><path d="M440 180 L450 160"/><path d="M458 164 L470 146"/><path d="M430 200 L446 196"/><path d="M448 184 L466 180"/><path d="M466 168 L484 164"/></g>
+        <path d="M390 206 C404 156 428 112 466 80 C452 120 434 166 410 216 Z" fill="#DCE6E4" stroke="#9DB7B4" stroke-width="1.4"/>
+        <path d="M396 208 C412 160 432 118 462 86" fill="none" stroke="#8FA9A6" stroke-width="1.4"/>
+        <g fill="none" stroke="#B4C8C6" stroke-width="1"><path d="M412 166 L408 146"/><path d="M424 140 L422 118"/><path d="M416 172 L432 162"/><path d="M430 144 L446 134"/></g>
+        <path d="M372 234 L458 196" fill="none" stroke="#C9A548" stroke-width="3"/>
+        <circle cx="458" cy="196" r="4" fill="#E0C26A" stroke="#9C7C2E" stroke-width="1"/>
+        <path d="M458 200 L458 222" fill="none" stroke="#C9A548" stroke-width="1.4"/>
+        <circle cx="458" cy="226" r="4.5" fill="#E0C26A" stroke="#9C7C2E" stroke-width="1"/>
+        <use href="#ln-flower" transform="translate(394 232) scale(1.1)"/>
+        <use href="#ln-flower" transform="translate(420 216) scale(0.8) rotate(20)"/>
+        <use href="#ln-flower" transform="translate(376 214) scale(0.65) rotate(-12)"/>
+        <g fill="#FBFDFC" stroke="#9DB7B4" stroke-width="1.2"><circle cx="410" cy="250" r="4"/><circle cx="430" cy="236" r="3.2"/></g>
+      </g>
+      <!-- one small blossom on the other side -->
+      <use href="#ln-flower" transform="translate(206 236) scale(0.6) rotate(10)"/>
+    </g>
+
+    <!-- arms: wide sleeves, gauze cuffs, hands -->
+    <g id="lm-arm-l">
+      <path d="M184 486 C152 526 134 590 126 670 C144 696 206 700 224 682 C214 620 214 556 226 510 Z" fill="url(#ln-sleeve)"/>
+      <path d="M170 540 C156 580 152 620 156 660 M196 560 C188 600 188 640 194 676" fill="none" stroke="#2A6E6C" stroke-width="1.6" opacity="0.55"/>
+      <path d="M126 666 C146 690 206 694 224 678 L226 696 C206 714 144 710 122 686 Z" fill="#EAF5F2"/>
+      <path d="M126 678 C146 700 206 704 224 690" fill="none" stroke="#E0C26A" stroke-width="1.6"/>
+      <ellipse cx="176" cy="710" rx="17" ry="14" fill="url(#ln-skin)"/>
+    </g>
+    <g id="lm-arm-r">
+      <path d="M416 486 C448 526 466 590 474 670 C456 696 394 700 376 682 C386 620 386 556 374 510 Z" fill="url(#ln-sleeve)"/>
+      <path d="M430 540 C444 580 448 620 444 660 M404 560 C412 600 412 640 406 676" fill="none" stroke="#2A6E6C" stroke-width="1.6" opacity="0.55"/>
+      <path d="M474 666 C454 690 394 694 376 678 L374 696 C394 714 456 710 478 686 Z" fill="#EAF5F2"/>
+      <path d="M474 678 C454 700 394 704 376 690" fill="none" stroke="#E0C26A" stroke-width="1.6"/>
+      <ellipse cx="424" cy="710" rx="17" ry="14" fill="url(#ln-skin)"/>
+    </g>
+  </g>
+<!--/CHARACTER-->
+  </svg>
+</body></html>
