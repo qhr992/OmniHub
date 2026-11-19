@@ -44,8 +44,9 @@ struct Annotation {
         case arrow(from: CGPoint, to: CGPoint)
         case pen([CGPoint])
         case text(String, CGPoint)
-        /// A pixelated copy of the screen under `rect`, made by `Mosaic.image`.
-        case mosaic(CGRect, CGImage?)
+        /// A brush stroke (as wide as the annotation's line width) that shows
+        /// `pixels`, a pixelated copy of the screens covering `area`.
+        case mosaic([CGPoint], pixels: CGImage?, area: CGRect)
     }
 
     var shape: Shape
@@ -57,8 +58,11 @@ struct Annotation {
         switch shape {
         case .rectangle(let r), .ellipse(let r):
             return r.insetBy(dx: -lineWidth, dy: -lineWidth)
-        case .mosaic(let r, _):
-            return r
+        case .mosaic(let points, _, _):
+            guard let first = points.first else { return .zero }
+            var r = CGRect(origin: first, size: .zero)
+            for p in points.dropFirst() { r = r.union(CGRect(origin: p, size: .zero)) }
+            return r.insetBy(dx: -lineWidth / 2, dy: -lineWidth / 2)
         case .arrow(let a, let b):
             let r = CGRect(x: min(a.x, b.x), y: min(a.y, b.y),
                            width: abs(a.x - b.x), height: abs(a.y - b.y))
@@ -112,10 +116,20 @@ struct Annotation {
             NSGraphicsContext.current = ns
             (string as NSString).draw(at: origin, withAttributes: attrs)
             NSGraphicsContext.restoreGraphicsState()
-        case .mosaic(let r, let image):
-            guard let image else { break }
+        case .mosaic(let points, let pixels, let area):
+            guard let pixels, let first = points.first else { break }
+            if points.count == 1 {
+                // A click paints one round dab.
+                ctx.addEllipse(in: CGRect(x: first.x - lineWidth / 2, y: first.y - lineWidth / 2,
+                                          width: lineWidth, height: lineWidth))
+            } else {
+                ctx.move(to: first)
+                for p in points.dropFirst() { ctx.addLine(to: p) }
+                ctx.replacePathWithStrokedPath()
+            }
+            ctx.clip()
             ctx.interpolationQuality = .none     // keep the blocks sharp
-            Mosaic.drawUpright(image, in: r, on: ctx)
+            Mosaic.drawUpright(pixels, in: area, on: ctx)
         }
         ctx.restoreGState()
     }
@@ -141,17 +155,18 @@ struct Annotation {
     }
 }
 
-/// Pixelates part of the captured screens for the mosaic tool.
+/// Pixelates the captured screens for the mosaic brush.
 enum Mosaic {
     /// Side of one mosaic block, in points.
-    static let blockSize: CGFloat = 10
-    /// A drag smaller than this (points) leaves no mosaic.
-    static let minimumSide: CGFloat = 3
+    static let blockSize: CGFloat = 8
+    /// Brush widths offered in the toolbar, in points.
+    static let brushSizes: [CGFloat] = [16, 28, 44]
+    static let defaultBrushSize: CGFloat = 28
 
     /// One pixel per block: the screens under `rect` scaled down, so that
     /// drawing it back into `rect` without interpolation shows the blocks.
     static func image(of rect: CGRect, captures: [DisplayCapture]) -> CGImage? {
-        guard rect.width >= minimumSide, rect.height >= minimumSide else { return nil }
+        guard rect.width >= 1, rect.height >= 1 else { return nil }
         let width = max(1, Int((rect.width / blockSize).rounded(.up)))
         let height = max(1, Int((rect.height / blockSize).rounded(.up)))
         guard let space = CGColorSpace(name: CGColorSpace.sRGB),

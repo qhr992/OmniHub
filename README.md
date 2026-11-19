@@ -13,7 +13,7 @@ A menu bar suite for macOS. Screenshots, pinned images, clipboard history, Now P
 **Floating dock.** A small ball that stays where you drop it. Hover over it to open a card next to it; the card grows out of the ball and folds back when the pointer leaves. While media plays, the ball stretches into a pill with the spinning cover and a level meter. The dock gives access to every page: Home, Activity, Agenda, Terminal, Shelf, Clipboard and Settings.
 
 **Screenshots.**
-- Capture with window detection, a magnifier and annotations with undo and redo: frames (rectangle or ellipse), arrows, pen, text, and mosaic to hide sensitive areas. Colours appear once a tool that uses them is chosen.
+- Capture with window detection, a magnifier and annotations with undo and redo: frames (rectangle or ellipse), arrows, pen, text, and a mosaic brush in three sizes to hide sensitive content. The chosen tool's options (shape, colour, brush size) open in a strip under the toolbar.
 - Move or resize the selection before confirming.
 - Copy, save, or pin the result.
 - Scrolling capture stitches a long page while you scroll it yourself.

@@ -94,48 +94,53 @@ enum SnipSelfTest {
 
         let controller = OverlayController(captures: [capture])
         let session = SnipSession(captures: [capture])
-        let savedShape = UserDefaults.standard.object(forKey: SnipSession.frameShapeKey)
-        defer { UserDefaults.standard.set(savedShape, forKey: SnipSession.frameShapeKey) }
+        let saved = [SnipSession.frameShapeKey, SnipSession.mosaicSizeKey].map { ($0, UserDefaults.standard.object(forKey: $0)) }
+        defer { for (key, value) in saved { UserDefaults.standard.set(value, forKey: key) } }
         session.frameShape = .rectangle
+        session.mosaicSize = Mosaic.defaultBrushSize
         let toolbar = ToolbarPanel(session: session, controller: controller)
         let renderDir = ProcessInfo.processInfo.environment["OMNIHUB_RENDER_DIR"]
-        func render(_ name: String) {   // OMNIHUB_RENDER_DIR=<dir>: save the toolbar as a PNG to look at
-            guard let dir = renderDir, let view = toolbar.contentView else { return }
-            view.appearance = NSAppearance(named: .darkAqua)
-            toolbar.setContentSize(view.fittingSize)
-            view.layoutSubtreeIfNeeded()
-            guard let rep = view.bitmapImageRepForCachingDisplay(in: view.bounds) else { return }
-            view.cacheDisplay(in: view.bounds, to: rep)
-            try? rep.representation(using: .png, properties: [:])?
-                .write(to: URL(fileURLWithPath: dir).appendingPathComponent(name))
+        func render(_ name: String) {   // OMNIHUB_RENDER_DIR=<dir>: save the toolbar and its options as PNGs
+            guard let dir = renderDir else { return }
+            for (panel, suffix) in [(toolbar as NSPanel, ""), (toolbar.debugOptionsPanel, "-options")] {
+                guard let view = panel.contentView,
+                      suffix.isEmpty || (panel as? ToolOptionsPanel)?.hasContent == true else { continue }
+                view.appearance = NSAppearance(named: .darkAqua)
+                if panel === toolbar { panel.setContentSize(view.fittingSize) }   // the options size themselves
+                view.layoutSubtreeIfNeeded()
+                guard let rep = view.bitmapImageRepForCachingDisplay(in: view.bounds) else { continue }
+                view.cacheDisplay(in: view.bounds, to: rep)
+                try? rep.representation(using: .png, properties: [:])?
+                    .write(to: URL(fileURLWithPath: dir).appendingPathComponent(name + suffix + ".png"))
+            }
         }
 
         check("the toolbar has one frame button for both shapes, then arrow, pen, text and mosaic",
               toolbar.debugToolNames == ["Frame", "Arrow", "Pen", "Text", "Mosaic"], "\(toolbar.debugToolNames)")
-        check("with no tool chosen the toolbar shows no shapes and no colours",
-              toolbar.debugChoices == "tools= shapes=hidden colors=hidden" && session.tool == nil, toolbar.debugChoices)
-        let plainWidth = toolbar.debugWidth
-        render("toolbar.png")
+        check("with no tool chosen no options are offered",
+              toolbar.debugChoices == "tools= shapes=hidden colors=hidden sizes=hidden" && session.tool == nil,
+              toolbar.debugChoices)
+        render("toolbar")
 
         toolbar.debugChoose(tool: .text)
         toolbar.debugChoose(color: 2)
-        check("choosing Text shows the colours only, and blue moves the colour mark",
-              toolbar.debugChoices == "tools=Text shapes=hidden colors=2" && session.tool == .text, toolbar.debugChoices)
+        check("choosing Text offers the colours only, and blue moves the colour mark",
+              toolbar.debugChoices == "tools=Text shapes=hidden colors=2 sizes=hidden" && session.tool == .text,
+              toolbar.debugChoices)
         toolbar.debugChoose(tool: .text)
-        check("choosing the chosen tool again goes back to moving the frame and hides the colours",
-              toolbar.debugChoices == "tools= shapes=hidden colors=hidden" && session.tool == nil, toolbar.debugChoices)
+        check("choosing the chosen tool again goes back to moving the frame, with no options",
+              toolbar.debugChoices == "tools= shapes=hidden colors=hidden sizes=hidden" && session.tool == nil,
+              toolbar.debugChoices)
 
         toolbar.debugChoose(tool: .rectangle)
         check("choosing Frame draws rectangles and offers both shapes and the colours",
-              toolbar.debugChoices == "tools=Frame shapes=Rectangle colors=2" && session.tool == .rectangle,
+              toolbar.debugChoices == "tools=Frame shapes=Rectangle colors=2 sizes=hidden" && session.tool == .rectangle,
               toolbar.debugChoices)
-        check("… which widens the toolbar", toolbar.debugWidth > plainWidth,
-              "\(toolbar.debugWidth) vs \(plainWidth)")
         toolbar.debugChoose(shape: .ellipse)
         check("picking the circle switches the frame to ellipses",
-              toolbar.debugChoices == "tools=Frame shapes=Ellipse colors=2" && session.tool == .ellipse,
+              toolbar.debugChoices == "tools=Frame shapes=Ellipse colors=2 sizes=hidden" && session.tool == .ellipse,
               toolbar.debugChoices)
-        render("toolbar-frame.png")
+        render("toolbar-frame")
         toolbar.debugChoose(tool: .rectangle)
         let off = session.tool == nil
         toolbar.debugChoose(tool: .rectangle)
@@ -144,10 +149,27 @@ enum SnipSelfTest {
               "\(String(describing: session.tool))")
 
         toolbar.debugChoose(tool: .mosaic)
-        check("Mosaic needs no colour: shapes and colours are hidden",
-              toolbar.debugChoices == "tools=Mosaic shapes=hidden colors=hidden" && session.tool == .mosaic,
+        check("Mosaic offers brush sizes, no colours",
+              toolbar.debugChoices == "tools=Mosaic shapes=hidden colors=hidden sizes=1" && session.tool == .mosaic,
               toolbar.debugChoices)
-        render("toolbar-mosaic.png")
+        toolbar.debugChoose(size: 2)
+        check("picking the large brush widens the mosaic brush and is kept",
+              toolbar.debugChoices.hasSuffix("sizes=2") && session.mosaicSize == Mosaic.brushSizes[2]
+              && SnipSession(captures: []).mosaicSize == Mosaic.brushSizes[2], toolbar.debugChoices)
+        toolbar.debugChoose(tool: .rectangle)
+        let frameStrip = toolbar.debugOptionsPanel.frame.height
+        toolbar.debugChoose(tool: .text)
+        let colorStrip = toolbar.debugOptionsPanel.frame.height
+        toolbar.debugChoose(tool: .mosaic)
+        check("each options strip fits its buttons whatever was shown before (frame 34, colours 28, sizes 34 pt)",
+              frameStrip == 34 && colorStrip == 28 && toolbar.debugOptionsPanel.frame.height == 34,
+              "frame \(frameStrip) colours \(colorStrip) sizes \(toolbar.debugOptionsPanel.frame.height)")
+        check("the mosaic pointer is a ring as wide as the brush",
+              SnipCursor.cursor(for: .mosaic, brushSize: 44).image.size.width == 48
+              && SnipCursor.cursor(for: .mosaic, brushSize: 16).image.size.width == 20)
+        render("toolbar-mosaic")
+
+        checkOptionsPlacement(toolbar, session)
 
         if let dir = renderDir {   // the pointers too
             for tool in AnnotationTool.allCases {
@@ -158,6 +180,33 @@ enum SnipSelfTest {
             }
         }
         toolbar.close()
+    }
+
+    /// The options open under the toolbar at the chosen tool, or over the
+    /// toolbar when it sits at the bottom of the screen.
+    private static func checkOptionsPlacement(_ toolbar: ToolbarPanel, _ session: SnipSession) {
+        guard NSScreen.main != nil else { print("SKIP  options placement: no screen in this session"); return }
+        let screen = CGDisplayBounds(CGMainDisplayID())
+        let options = toolbar.debugOptionsPanel
+        defer { toolbar.orderOut(nil) }
+
+        session.selection = CGRect(x: screen.minX + 200, y: screen.minY + 200, width: 500, height: 200)
+        toolbar.show(near: session.selection!)
+        toolbar.debugChoose(tool: .pen)
+        let tool = toolbar.debugChosenToolFrame ?? .zero
+        check("the options open under the toolbar, starting at the chosen tool",
+              options.isVisible && options.frame.maxY <= toolbar.frame.minY
+              && abs(options.frame.minX - (tool.minX - 8)) < 1,
+              "options \(options.frame) toolbar \(toolbar.frame) tool \(tool)")
+
+        session.selection = CGRect(x: screen.minX + 200, y: screen.maxY - 40, width: 500, height: 30)
+        toolbar.show(near: session.selection!)
+        check("with no room below, they open over the toolbar",
+              options.isVisible && options.frame.minY >= toolbar.frame.maxY,
+              "options \(options.frame) toolbar \(toolbar.frame)")
+
+        toolbar.debugChoose(tool: .pen)
+        check("with no tool chosen the options close", !options.isVisible)
     }
 
     /// Columns alternating black and white, so a pixelated area turns grey.
@@ -187,13 +236,16 @@ enum SnipSelfTest {
         return (0..<h).map { y in (0..<w).map { x in bytes[(y * w + x) * 4] } }
     }
 
-    /// A mosaic drag covers that area with even grey blocks in the copied
-    /// image and leaves the rest of the screenshot untouched.
+    /// The mosaic is a brush: a stroke turns the screen under it into even
+    /// grey blocks in the copied image and leaves the rest untouched.
     private static func checkMosaic() {
         let size = CGSize(width: 400, height: 300)
         guard let image = stripedImage(size) else { check("mosaic test image", false); return }
         let capture = DisplayCapture(displayID: 0, bounds: CGRect(origin: .zero, size: size), image: image)
         let session = SnipSession(captures: [capture])
+        let saved = UserDefaults.standard.object(forKey: SnipSession.mosaicSizeKey)
+        defer { UserDefaults.standard.set(saved, forKey: SnipSession.mosaicSizeKey) }
+        session.mosaicSize = 28
         let view = OverlayView(capture: capture, session: session)
         let window = NSWindow(contentRect: CGRect(origin: .zero, size: size), styleMask: [.borderless],
                               backing: .buffered, defer: false)
@@ -202,34 +254,33 @@ enum SnipSelfTest {
         session.selection = CGRect(x: 100, y: 100, width: 200, height: 100)
         session.tool = .mosaic
 
-        drag(view, [CGPoint(x: 150, y: 150)])
-        check("a click with the mosaic tool adds nothing", session.annotations.isEmpty,
-              "annotations \(session.annotations.count)")
-
-        // Selection-local area (20,20)-(120,80): ten by six blocks of 10 pt.
-        drag(view, [CGPoint(x: 120, y: 120), CGPoint(x: 170, y: 150), CGPoint(x: 220, y: 180)])
-        var covered = false
-        if case .mosaic(let rect, let pixels)? = session.annotations.first?.shape {
-            covered = rect == CGRect(x: 120, y: 120, width: 100, height: 60) && pixels?.width == 10 && pixels?.height == 6
+        // A horizontal stroke along y = 150 from x = 120 to 220, 28 pt wide.
+        drag(view, [CGPoint(x: 120, y: 150), CGPoint(x: 170, y: 150), CGPoint(x: 220, y: 150)])
+        var stroke = false
+        if case .mosaic(let points, let pixels, _)? = session.annotations.first?.shape {
+            stroke = points.count == 3 && pixels != nil && session.annotations.first?.lineWidth == 28
         }
-        check("a mosaic drag adds one mosaic of the dragged area", session.annotations.count == 1 && covered,
+        check("a mosaic drag adds one brush stroke of the chosen width", session.annotations.count == 1 && stroke,
               "annotations \(session.annotations.count)")
 
         guard let rendered = session.renderFinalImage()?.cgImage(forProposedRect: nil, context: nil, hints: nil)
         else { check("mosaic render", false); return }
         let red = redChannel(rendered)
         guard red.count == 100, red[0].count == 200 else { check("mosaic render size", false, "\(red.count)"); return }
-        let inside = red[25][25], sameBlock = red[28][28], nextBlock = red[25][35]
-        check("inside the mosaic the stripes become even grey blocks",
-              (60...195).contains(inside) && inside == sameBlock && red[25][20...29].allSatisfy { $0 == inside }
-              && (60...195).contains(nextBlock),
-              "inside \(inside) same block \(sameBlock) next \(nextBlock)")
-        check("outside the mosaic the screenshot is untouched",
-              Set(red[50][150...153]) == [0, 255] && Set(red[10][20...23]) == [0, 255],
-              "\(Array(red[50][150...153])) \(Array(red[10][20...23]))")
+        // Selection-local (50,50) is screen (150,150); its block spans screen 144–152, local 44–52.
+        let block = red[50][50]
+        check("under the stroke the stripes become even grey blocks",
+              (60...195).contains(block) && red[44...51].allSatisfy { $0[44...51].allSatisfy { $0 == block } },
+              "block \(block) row \(Array(red[50][44...51]))")
+        check("away from the stroke the screenshot is untouched",
+              Set(red[10][50...53]) == [0, 255] && Set(red[50][150...153]) == [0, 255],
+              "\(Array(red[10][50...53])) \(Array(red[50][150...153]))")
 
-        session.undo()
-        check("undo removes the mosaic", session.annotations.isEmpty)
+        drag(view, [CGPoint(x: 260, y: 120)])
+        check("a click paints one dab", session.annotations.count == 2,
+              "annotations \(session.annotations.count)")
+        session.undo(); session.undo()
+        check("undo removes the strokes", session.annotations.isEmpty)
 
         // Upright: the top half of the screen black, the bottom half white.
         let w = 400, h = 300
@@ -242,11 +293,12 @@ enum SnipSelfTest {
         let split = SnipSession(captures: [DisplayCapture(displayID: 0, bounds: CGRect(x: 0, y: 0, width: w, height: h),
                                                           image: halves)])
         split.selection = CGRect(x: 100, y: 100, width: 200, height: 100)
-        let area = CGRect(x: 120, y: 130, width: 40, height: 40)   // rows 130–170 across the middle
-        split.annotations = [Annotation(shape: .mosaic(area, Mosaic.image(of: area, captures: split.captures)),
-                                        color: .systemRed, lineWidth: 3)]
+        // A vertical stroke at x = 140 across the middle (y 130–170).
+        split.annotations = [Annotation(shape: .mosaic([CGPoint(x: 140, y: 130), CGPoint(x: 140, y: 170)],
+                                                       pixels: split.mosaicPixels, area: split.screensBounds),
+                                        color: .systemRed, lineWidth: 28)]
         let flipped = split.renderFinalImage()?.cgImage(forProposedRect: nil, context: nil, hints: nil).map(redChannel)
-        let top = flipped?[35][25] ?? 128, bottom = flipped?[65][25] ?? 128
+        let top = flipped?[33][40] ?? 128, bottom = flipped?[65][40] ?? 128
         check("the mosaic keeps the screen the right way up (dark above, light below)", top < 60 && bottom > 195,
               "top \(top) bottom \(bottom)")
     }

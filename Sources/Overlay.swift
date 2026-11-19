@@ -27,6 +27,18 @@ final class SnipSession {
         set { if newValue.isFrame { UserDefaults.standard.set(newValue.rawValue, forKey: Self.frameShapeKey) } }
     }
     static let frameShapeKey = "snip.frameShape"
+    /// Width of the mosaic brush; the last one chosen is kept.
+    var mosaicSize: CGFloat {
+        get {
+            let stored = CGFloat(Prefs.int(Self.mosaicSizeKey, Int(Mosaic.defaultBrushSize)))
+            return Mosaic.brushSizes.contains(stored) ? stored : Mosaic.defaultBrushSize
+        }
+        set { if Mosaic.brushSizes.contains(newValue) { UserDefaults.standard.set(Int(newValue), forKey: Self.mosaicSizeKey) } }
+    }
+    static let mosaicSizeKey = "snip.mosaicSize"
+    /// All screens pixelated once, on the first mosaic stroke of a screenshot,
+    /// so every stroke shares one grid of blocks.
+    lazy var mosaicPixels: CGImage? = Mosaic.image(of: screensBounds, captures: captures)
     var color: NSColor = .systemRed
     var lineWidth: CGFloat = 3
 
@@ -521,8 +533,8 @@ final class OverlayView: NSView {
         }
 
         if let draft = session.draft {
-            // A click with the mosaic tool covers nothing: keep no empty step to undo.
-            if case .mosaic(_, nil) = draft.shape {
+            // Without screen pixels a mosaic would cover nothing: keep no empty step to undo.
+            if case .mosaic(_, nil, _) = draft.shape {
                 session.draft = nil
                 session.controller?.refreshAll()
                 return
@@ -560,7 +572,7 @@ final class OverlayView: NSView {
             switch SelectionEdit.pointer(at: point, selection: session.selection, tool: session.tool) {
             case .resize(let handle): SelectionEdit.cursor(for: handle).set()
             case .move: NSCursor.openHand.set()
-            case .tool(let tool): SnipCursor.cursor(for: tool).set()
+            case .tool(let tool): SnipCursor.cursor(for: tool, brushSize: session.mosaicSize).set()
             case .arrow: NSCursor.arrow.set()
             }
             return
@@ -593,8 +605,9 @@ final class OverlayView: NSView {
         case .text:
             beginTextEntry(at: point)
         case .mosaic:
-            session.draft = Annotation(shape: .mosaic(CGRect(origin: point, size: .zero), nil),
-                                       color: session.color, lineWidth: session.lineWidth)
+            session.draft = Annotation(shape: .mosaic([point], pixels: session.mosaicPixels,
+                                                      area: session.screensBounds),
+                                       color: session.color, lineWidth: session.mosaicSize)
         }
         session.controller?.refreshAll()
     }
@@ -618,10 +631,9 @@ final class OverlayView: NSView {
         case .pen(var points):
             points.append(point)
             updated.shape = .pen(points)
-        case .mosaic:
-            let rect = CGRect(x: min(anchor.x, point.x), y: min(anchor.y, point.y),
-                              width: abs(point.x - anchor.x), height: abs(point.y - anchor.y))
-            updated.shape = .mosaic(rect, Mosaic.image(of: rect, captures: session.captures))
+        case .mosaic(var points, let pixels, let area):
+            points.append(point)
+            updated.shape = .mosaic(points, pixels: pixels, area: area)
         case .text:
             break
         }
