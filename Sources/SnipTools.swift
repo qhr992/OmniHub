@@ -30,11 +30,34 @@ final class ToolButton: NSButton {
 enum SnipCursor {
     private static var cache: [AnnotationTool: NSCursor] = [:]
 
-    static func cursor(for tool: AnnotationTool) -> NSCursor {
+    private static var brushCache: [CGFloat: NSCursor] = [:]
+
+    /// `brushSize`: the mosaic brush shows as a ring of its width.
+    static func cursor(for tool: AnnotationTool, brushSize: CGFloat = Mosaic.defaultBrushSize) -> NSCursor {
         if tool == .text { return .iBeam }
+        if tool == .mosaic { return brushCursor(size: brushSize) }
         if let cursor = cache[tool] { return cursor }
         let cursor = NSCursor(image: image(for: tool), hotSpot: NSPoint(x: 9, y: 9))
         cache[tool] = cursor
+        return cursor
+    }
+
+    /// A white ring with a dark outline, as wide as the brush, centred on the hot spot.
+    private static func brushCursor(size: CGFloat) -> NSCursor {
+        if let cursor = brushCache[size] { return cursor }
+        let side = size + 4
+        let image = NSImage(size: NSSize(width: side, height: side), flipped: true) { _ in
+            let ring = NSRect(x: 2, y: 2, width: size, height: size)
+            for (width, color) in [(CGFloat(3), NSColor.black.withAlphaComponent(0.6)), (CGFloat(1.5), NSColor.white)] {
+                let path = NSBezierPath(ovalIn: ring)
+                path.lineWidth = width
+                color.setStroke()
+                path.stroke()
+            }
+            return true
+        }
+        let cursor = NSCursor(image: image, hotSpot: NSPoint(x: side / 2, y: side / 2))
+        brushCache[size] = cursor
         return cursor
     }
 

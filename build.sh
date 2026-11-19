@@ -23,6 +23,7 @@ SOURCES=(
   Sources/Overlay.swift
   Sources/SelectionEdit.swift
   Sources/SnipTools.swift
+  Sources/SnipToolbar.swift
   Sources/SnipSelfTest.swift
   Sources/PinnedImageWindow.swift
   Sources/ScrollStitcher.swift
