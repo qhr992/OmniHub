@@ -94,32 +94,161 @@ enum SnipSelfTest {
 
         let controller = OverlayController(captures: [capture])
         let session = SnipSession(captures: [capture])
+        let savedShape = UserDefaults.standard.object(forKey: SnipSession.frameShapeKey)
+        defer { UserDefaults.standard.set(savedShape, forKey: SnipSession.frameShapeKey) }
+        session.frameShape = .rectangle
         let toolbar = ToolbarPanel(session: session, controller: controller)
-        check("the toolbar starts with no tool chosen, only the starting colour",
-              toolbar.debugChoices == "tools= colors=0" && session.tool == nil, toolbar.debugChoices)
+        let renderDir = ProcessInfo.processInfo.environment["OMNIHUB_RENDER_DIR"]
+        func render(_ name: String) {   // OMNIHUB_RENDER_DIR=<dir>: save the toolbar as a PNG to look at
+            guard let dir = renderDir, let view = toolbar.contentView else { return }
+            view.appearance = NSAppearance(named: .darkAqua)
+            toolbar.setContentSize(view.fittingSize)
+            view.layoutSubtreeIfNeeded()
+            guard let rep = view.bitmapImageRepForCachingDisplay(in: view.bounds) else { return }
+            view.cacheDisplay(in: view.bounds, to: rep)
+            try? rep.representation(using: .png, properties: [:])?
+                .write(to: URL(fileURLWithPath: dir).appendingPathComponent(name))
+        }
+
+        check("the toolbar has one frame button for both shapes, then arrow, pen, text and mosaic",
+              toolbar.debugToolNames == ["Frame", "Arrow", "Pen", "Text", "Mosaic"], "\(toolbar.debugToolNames)")
+        check("with no tool chosen the toolbar shows no shapes and no colours",
+              toolbar.debugChoices == "tools= shapes=hidden colors=hidden" && session.tool == nil, toolbar.debugChoices)
+        let plainWidth = toolbar.debugWidth
+        render("toolbar.png")
+
         toolbar.debugChoose(tool: .text)
         toolbar.debugChoose(color: 2)
-        check("choosing Text and blue moves the marks (one tool, one colour)",
-              toolbar.debugChoices == "tools=Text colors=2" && session.tool == .text, toolbar.debugChoices)
+        check("choosing Text shows the colours only, and blue moves the colour mark",
+              toolbar.debugChoices == "tools=Text shapes=hidden colors=2" && session.tool == .text, toolbar.debugChoices)
         toolbar.debugChoose(tool: .text)
-        check("choosing the chosen tool again goes back to moving the frame",
-              toolbar.debugChoices == "tools= colors=2" && session.tool == nil, toolbar.debugChoices)
-        // OMNIHUB_RENDER_DIR=<dir>: also save the toolbar and the pointers as PNGs to look at.
-        if let dir = ProcessInfo.processInfo.environment["OMNIHUB_RENDER_DIR"], let view = toolbar.contentView {
-            func save(_ rep: NSBitmapImageRep?, _ name: String) {
-                try? rep?.representation(using: .png, properties: [:])?.write(to: URL(fileURLWithPath: dir).appendingPathComponent(name))
-            }
-            view.appearance = NSAppearance(named: .darkAqua)
-            view.layoutSubtreeIfNeeded()
-            let rep = view.bitmapImageRepForCachingDisplay(in: view.bounds)
-            if let rep { view.cacheDisplay(in: view.bounds, to: rep) }
-            save(rep, "toolbar.png")
+        check("choosing the chosen tool again goes back to moving the frame and hides the colours",
+              toolbar.debugChoices == "tools= shapes=hidden colors=hidden" && session.tool == nil, toolbar.debugChoices)
+
+        toolbar.debugChoose(tool: .rectangle)
+        check("choosing Frame draws rectangles and offers both shapes and the colours",
+              toolbar.debugChoices == "tools=Frame shapes=Rectangle colors=2" && session.tool == .rectangle,
+              toolbar.debugChoices)
+        check("… which widens the toolbar", toolbar.debugWidth > plainWidth,
+              "\(toolbar.debugWidth) vs \(plainWidth)")
+        toolbar.debugChoose(shape: .ellipse)
+        check("picking the circle switches the frame to ellipses",
+              toolbar.debugChoices == "tools=Frame shapes=Ellipse colors=2" && session.tool == .ellipse,
+              toolbar.debugChoices)
+        render("toolbar-frame.png")
+        toolbar.debugChoose(tool: .rectangle)
+        let off = session.tool == nil
+        toolbar.debugChoose(tool: .rectangle)
+        check("Frame again turns it off; chosen once more it keeps the last shape (also for the next screenshot)",
+              off && session.tool == .ellipse && SnipSession(captures: []).frameShape == .ellipse,
+              "\(String(describing: session.tool))")
+
+        toolbar.debugChoose(tool: .mosaic)
+        check("Mosaic needs no colour: shapes and colours are hidden",
+              toolbar.debugChoices == "tools=Mosaic shapes=hidden colors=hidden" && session.tool == .mosaic,
+              toolbar.debugChoices)
+        render("toolbar-mosaic.png")
+
+        if let dir = renderDir {   // the pointers too
             for tool in AnnotationTool.allCases {
                 let image = SnipCursor.cursor(for: tool).image
-                save(image.tiffRepresentation.flatMap(NSBitmapImageRep.init(data:)), "cursor-\(tool.title).png")
+                try? image.tiffRepresentation.flatMap(NSBitmapImageRep.init(data:))?
+                    .representation(using: .png, properties: [:])?
+                    .write(to: URL(fileURLWithPath: dir).appendingPathComponent("cursor-\(tool.title).png"))
             }
         }
         toolbar.close()
+    }
+
+    /// Columns alternating black and white, so a pixelated area turns grey.
+    private static func stripedImage(_ size: CGSize) -> CGImage? {
+        guard let space = CGColorSpace(name: CGColorSpace.sRGB),
+              let ctx = CGContext(data: nil, width: Int(size.width), height: Int(size.height),
+                                  bitsPerComponent: 8, bytesPerRow: 0, space: space,
+                                  bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue) else { return nil }
+        ctx.setFillColor(gray: 0, alpha: 1)
+        ctx.fill(CGRect(origin: .zero, size: size))
+        ctx.setFillColor(gray: 1, alpha: 1)
+        for x in stride(from: 1, to: Int(size.width), by: 2) {
+            ctx.fill(CGRect(x: x, y: 0, width: 1, height: Int(size.height)))
+        }
+        return ctx.makeImage()
+    }
+
+    /// Red channel of every pixel, rows from the top.
+    private static func redChannel(_ image: CGImage) -> [[UInt8]] {
+        let w = image.width, h = image.height
+        var bytes = [UInt8](repeating: 0, count: w * h * 4)
+        guard let space = CGColorSpace(name: CGColorSpace.sRGB),
+              let ctx = CGContext(data: &bytes, width: w, height: h, bitsPerComponent: 8, bytesPerRow: w * 4,
+                                  space: space, bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue)
+        else { return [] }
+        ctx.draw(image, in: CGRect(x: 0, y: 0, width: w, height: h))
+        return (0..<h).map { y in (0..<w).map { x in bytes[(y * w + x) * 4] } }
+    }
+
+    /// A mosaic drag covers that area with even grey blocks in the copied
+    /// image and leaves the rest of the screenshot untouched.
+    private static func checkMosaic() {
+        let size = CGSize(width: 400, height: 300)
+        guard let image = stripedImage(size) else { check("mosaic test image", false); return }
+        let capture = DisplayCapture(displayID: 0, bounds: CGRect(origin: .zero, size: size), image: image)
+        let session = SnipSession(captures: [capture])
+        let view = OverlayView(capture: capture, session: session)
+        let window = NSWindow(contentRect: CGRect(origin: .zero, size: size), styleMask: [.borderless],
+                              backing: .buffered, defer: false)
+        window.contentView = view
+        session.stage = .annotating
+        session.selection = CGRect(x: 100, y: 100, width: 200, height: 100)
+        session.tool = .mosaic
+
+        drag(view, [CGPoint(x: 150, y: 150)])
+        check("a click with the mosaic tool adds nothing", session.annotations.isEmpty,
+              "annotations \(session.annotations.count)")
+
+        // Selection-local area (20,20)-(120,80): ten by six blocks of 10 pt.
+        drag(view, [CGPoint(x: 120, y: 120), CGPoint(x: 170, y: 150), CGPoint(x: 220, y: 180)])
+        var covered = false
+        if case .mosaic(let rect, let pixels)? = session.annotations.first?.shape {
+            covered = rect == CGRect(x: 120, y: 120, width: 100, height: 60) && pixels?.width == 10 && pixels?.height == 6
+        }
+        check("a mosaic drag adds one mosaic of the dragged area", session.annotations.count == 1 && covered,
+              "annotations \(session.annotations.count)")
+
+        guard let rendered = session.renderFinalImage()?.cgImage(forProposedRect: nil, context: nil, hints: nil)
+        else { check("mosaic render", false); return }
+        let red = redChannel(rendered)
+        guard red.count == 100, red[0].count == 200 else { check("mosaic render size", false, "\(red.count)"); return }
+        let inside = red[25][25], sameBlock = red[28][28], nextBlock = red[25][35]
+        check("inside the mosaic the stripes become even grey blocks",
+              (60...195).contains(inside) && inside == sameBlock && red[25][20...29].allSatisfy { $0 == inside }
+              && (60...195).contains(nextBlock),
+              "inside \(inside) same block \(sameBlock) next \(nextBlock)")
+        check("outside the mosaic the screenshot is untouched",
+              Set(red[50][150...153]) == [0, 255] && Set(red[10][20...23]) == [0, 255],
+              "\(Array(red[50][150...153])) \(Array(red[10][20...23]))")
+
+        session.undo()
+        check("undo removes the mosaic", session.annotations.isEmpty)
+
+        // Upright: the top half of the screen black, the bottom half white.
+        let w = 400, h = 300
+        var bytes = [UInt8](repeating: 255, count: w * h * 4)
+        for i in 0..<(w * h / 2 * 4) where i % 4 != 3 { bytes[i] = 0 }
+        guard let space = CGColorSpace(name: CGColorSpace.sRGB),
+              let halves = CGContext(data: &bytes, width: w, height: h, bitsPerComponent: 8, bytesPerRow: w * 4,
+                                     space: space, bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue)?.makeImage()
+        else { check("mosaic orientation image", false); return }
+        let split = SnipSession(captures: [DisplayCapture(displayID: 0, bounds: CGRect(x: 0, y: 0, width: w, height: h),
+                                                          image: halves)])
+        split.selection = CGRect(x: 100, y: 100, width: 200, height: 100)
+        let area = CGRect(x: 120, y: 130, width: 40, height: 40)   // rows 130–170 across the middle
+        split.annotations = [Annotation(shape: .mosaic(area, Mosaic.image(of: area, captures: split.captures)),
+                                        color: .systemRed, lineWidth: 3)]
+        let flipped = split.renderFinalImage()?.cgImage(forProposedRect: nil, context: nil, hints: nil).map(redChannel)
+        let top = flipped?[35][25] ?? 128, bottom = flipped?[65][25] ?? 128
+        check("the mosaic keeps the screen the right way up (dark above, light below)", top < 60 && bottom > 195,
+              "top \(top) bottom \(bottom)")
     }
 
     /// Esc leaves the screenshot in one press, from every stage.
@@ -242,6 +371,7 @@ enum SnipSelfTest {
         checkToolbarStaysOnTop()
         checkToolFeedback(capture: capture)
         checkEscapeLeaves(capture: capture)
+        checkMosaic()
 
         print(failures == 0 ? "snip selftest: all passed" : "snip selftest: \(failures) failed")
         exit(failures == 0 ? 0 : 1)

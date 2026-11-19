@@ -20,6 +20,13 @@ final class SnipSession {
     /// nil until a tool is picked in the toolbar: a drag inside the frame
     /// then moves it instead of drawing.
     var tool: AnnotationTool?
+    /// The frame shape the frame button picks; the last one chosen is kept.
+    var frameShape: AnnotationTool {
+        get { AnnotationTool(rawValue: Prefs.int(Self.frameShapeKey, AnnotationTool.rectangle.rawValue))
+                .flatMap { $0.isFrame ? $0 : nil } ?? .rectangle }
+        set { if newValue.isFrame { UserDefaults.standard.set(newValue.rawValue, forKey: Self.frameShapeKey) } }
+    }
+    static let frameShapeKey = "snip.frameShape"
     var color: NSColor = .systemRed
     var lineWidth: CGFloat = 3
 
@@ -514,6 +521,12 @@ final class OverlayView: NSView {
         }
 
         if let draft = session.draft {
+            // A click with the mosaic tool covers nothing: keep no empty step to undo.
+            if case .mosaic(_, nil) = draft.shape {
+                session.draft = nil
+                session.controller?.refreshAll()
+                return
+            }
             session.annotations.append(draft)
             session.redoStack.removeAll()
             session.draft = nil
@@ -579,6 +592,9 @@ final class OverlayView: NSView {
                                        color: session.color, lineWidth: session.lineWidth)
         case .text:
             beginTextEntry(at: point)
+        case .mosaic:
+            session.draft = Annotation(shape: .mosaic(CGRect(origin: point, size: .zero), nil),
+                                       color: session.color, lineWidth: session.lineWidth)
         }
         session.controller?.refreshAll()
     }
@@ -602,6 +618,10 @@ final class OverlayView: NSView {
         case .pen(var points):
             points.append(point)
             updated.shape = .pen(points)
+        case .mosaic:
+            let rect = CGRect(x: min(anchor.x, point.x), y: min(anchor.y, point.y),
+                              width: abs(point.x - anchor.x), height: abs(point.y - anchor.y))
+            updated.shape = .mosaic(rect, Mosaic.image(of: rect, captures: session.captures))
         case .text:
             break
         }

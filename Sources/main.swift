@@ -27,9 +27,16 @@ enum ScreenGeometry {
 final class ToolbarPanel: NSPanel {
     private unowned let controller: OverlayController
     private let session: SnipSession
-    private var toolButtons: [ToolButton] = []
+    /// One button per toolbar tool; the frame button stands for both frame shapes.
+    private var toolButtons: [(tool: AnnotationTool, button: ToolButton)] = []
+    private var shapeButtons: [ToolButton] = []
     private var colorButtons: [NSButton] = []
+    /// Shown only while a tool is chosen: frame shapes (frame tool) and colours.
+    private var optionViews: [NSView] = []
+    private var shapeViews: [NSView] = []
+    private var colorViews: [NSView] = []
     private static let colors: [NSColor] = [.systemRed, .systemYellow, .systemBlue, .white]
+    private static let toolbarTools: [AnnotationTool] = [.rectangle, .arrow, .pen, .text, .mosaic]
 
     init(session: SnipSession, controller: OverlayController) {
         self.session = session
@@ -60,21 +67,30 @@ final class ToolbarPanel: NSPanel {
         stack.edgeInsets = NSEdgeInsets(top: 6, left: 10, bottom: 6, right: 10)
         stack.translatesAutoresizingMaskIntoConstraints = false
 
-        for tool in AnnotationTool.allCases {
-            let image = NSImage(systemSymbolName: tool.symbolName, accessibilityDescription: tool.title)
-            let button = ToolButton(image: image ?? NSImage(), target: self, action: #selector(selectTool(_:)))
-            button.title = ""
-            button.bezelStyle = .regularSquare
-            button.isBordered = false
-            button.toolTip = tool.title
-            button.tag = tool.rawValue
-            button.widthAnchor.constraint(equalToConstant: 26).isActive = true
-            button.heightAnchor.constraint(equalToConstant: 26).isActive = true
-            toolButtons.append(button)
+        for tool in Self.toolbarTools {
+            let title = tool.isFrame ? "Frame" : tool.title
+            let button = makeToolButton(symbol: tool.symbolName, tooltip: title, side: 26,
+                                        action: #selector(selectTool(_:)))
+            button.tag = toolButtons.count
+            toolButtons.append((tool, button))
             stack.addArrangedSubview(button)
         }
 
-        stack.addArrangedSubview(separator())
+        let optionsSeparator = separator()
+        stack.addArrangedSubview(optionsSeparator)
+        optionViews.append(optionsSeparator)
+
+        for shape in AnnotationTool.frameShapes {
+            let button = makeToolButton(symbol: shape.symbolName, tooltip: shape.title, side: 22,
+                                        action: #selector(selectShape(_:)))
+            button.tag = shape.rawValue
+            shapeButtons.append(button)
+            stack.addArrangedSubview(button)
+            shapeViews.append(button)
+        }
+        let shapesSeparator = separator(height: 16)
+        stack.addArrangedSubview(shapesSeparator)
+        shapeViews.append(shapesSeparator)
 
         for (index, color) in Self.colors.enumerated() {
             let button = NSButton(frame: NSRect(x: 0, y: 0, width: 18, height: 18))
@@ -94,6 +110,7 @@ final class ToolbarPanel: NSPanel {
             button.heightAnchor.constraint(equalToConstant: 18).isActive = true
             colorButtons.append(button)
             stack.addArrangedSubview(button)
+            colorViews.append(button)
         }
 
         stack.addArrangedSubview(separator())
@@ -142,23 +159,65 @@ final class ToolbarPanel: NSPanel {
         refreshChoices()
     }
 
-    /// The chosen tool and colour are marked in the toolbar.
+    /// Marks the chosen tool, shape and colour, and shows only the options
+    /// the chosen tool uses: shapes for the frame, colours for drawing tools.
     private func refreshChoices() {
-        for button in toolButtons { button.isChosen = button.tag == session.tool?.rawValue }
+        let tool = session.tool
+        for (slot, button) in toolButtons {
+            if slot.isFrame {
+                let shape = tool?.isFrame == true ? tool! : session.frameShape
+                button.image = NSImage(systemSymbolName: shape.symbolName, accessibilityDescription: "Frame")
+                button.isChosen = tool?.isFrame == true
+            } else {
+                button.isChosen = tool == slot
+            }
+        }
+        for button in shapeButtons { button.isChosen = button.tag == tool?.rawValue }
         for (index, button) in colorButtons.enumerated() {
             let chosen = Self.colors[index] == session.color
             button.layer?.borderWidth = chosen ? 2.5 : 1
             button.layer?.borderColor = (chosen ? NSColor.white : NSColor.black.withAlphaComponent(0.25)).cgColor
         }
+        let showsShapes = tool?.isFrame == true
+        let showsColors = tool?.usesColor == true
+        for view in optionViews { view.isHidden = !(showsShapes || showsColors) }
+        for view in shapeViews { view.isHidden = !showsShapes }
+        for view in colorViews { view.isHidden = !showsColors }
     }
 
     /// Test hooks (see --snip-selftest).
-    func debugChoose(tool: AnnotationTool) { if let b = toolButtons.first(where: { $0.tag == tool.rawValue }) { selectTool(b) } }
+    func debugChoose(tool: AnnotationTool) {
+        if let slot = toolButtons.first(where: { $0.tool == tool || ($0.tool.isFrame && tool.isFrame) }) {
+            selectTool(slot.button)
+        }
+    }
+    func debugChoose(shape: AnnotationTool) {
+        if let button = shapeButtons.first(where: { $0.tag == shape.rawValue }) { selectShape(button) }
+    }
     func debugChoose(color index: Int) { if index < colorButtons.count { selectColor(colorButtons[index]) } }
+    var debugToolNames: [String] { toolButtons.map { $0.button.toolTip ?? "" } }
+    /// e.g. "tools=Frame shapes=Ellipse colors=2"; "hidden" when the option is not shown.
     var debugChoices: String {
-        let tools = toolButtons.filter(\.isChosen).compactMap { AnnotationTool(rawValue: $0.tag)?.title }
-        let colors = colorButtons.enumerated().filter { $0.element.layer?.borderWidth == 2.5 }.map { String($0.offset) }
-        return "tools=" + tools.joined(separator: ",") + " colors=" + colors.joined(separator: ",")
+        let tools = toolButtons.filter(\.button.isChosen).map { $0.button.toolTip ?? "" }
+        let shapes = shapeButtons.first?.isHidden == true ? "hidden"
+            : shapeButtons.filter(\.isChosen).compactMap { AnnotationTool(rawValue: $0.tag)?.title }.joined(separator: ",")
+        let colors = colorButtons.first?.isHidden == true ? "hidden"
+            : colorButtons.enumerated().filter { $0.element.layer?.borderWidth == 2.5 }.map { String($0.offset) }
+                .joined(separator: ",")
+        return "tools=" + tools.joined(separator: ",") + " shapes=" + shapes + " colors=" + colors
+    }
+    var debugWidth: CGFloat { contentView?.fittingSize.width ?? 0 }
+
+    private func makeToolButton(symbol: String, tooltip: String, side: CGFloat, action: Selector) -> ToolButton {
+        let image = NSImage(systemSymbolName: symbol, accessibilityDescription: tooltip)
+        let button = ToolButton(image: image ?? NSImage(), target: self, action: action)
+        button.title = ""
+        button.bezelStyle = .regularSquare
+        button.isBordered = false
+        button.toolTip = tooltip
+        button.widthAnchor.constraint(equalToConstant: side).isActive = true
+        button.heightAnchor.constraint(equalToConstant: side).isActive = true
+        return button
     }
 
     private func makeButton(symbol: String, tooltip: String) -> NSButton {
@@ -174,11 +233,11 @@ final class ToolbarPanel: NSPanel {
         return button
     }
 
-    private func separator() -> NSBox {
+    private func separator(height: CGFloat = 22) -> NSBox {
         let box = NSBox()
         box.boxType = .separator
         box.widthAnchor.constraint(equalToConstant: 1).isActive = true
-        box.heightAnchor.constraint(equalToConstant: 22).isActive = true
+        box.heightAnchor.constraint(equalToConstant: height).isActive = true
         return box
     }
 
@@ -200,10 +259,25 @@ final class ToolbarPanel: NSPanel {
     }
 
     @objc private func selectTool(_ sender: NSButton) {
-        guard let tool = AnnotationTool(rawValue: sender.tag) else { return }
+        guard toolButtons.indices.contains(sender.tag) else { return }
+        let slot = toolButtons[sender.tag].tool
+        let isChosen = slot.isFrame ? session.tool?.isFrame == true : session.tool == slot
         // The chosen tool again: back to no tool, where a drag moves the frame.
-        session.tool = session.tool == tool ? nil : tool
+        session.tool = isChosen ? nil : (slot.isFrame ? session.frameShape : slot)
+        optionsChanged()
+    }
+
+    @objc private func selectShape(_ sender: NSButton) {
+        guard let shape = AnnotationTool(rawValue: sender.tag), shape.isFrame else { return }
+        session.frameShape = shape
+        session.tool = shape
+        optionsChanged()
+    }
+
+    /// The options shown changed the toolbar's width: keep it docked to the frame.
+    private func optionsChanged() {
         refreshChoices()
+        if isVisible, let selection = session.selection { show(near: selection) }
     }
 
     @objc private func selectColor(_ sender: NSButton) {
