@@ -7,6 +7,10 @@ extension Notification.Name {
 /// Time-synced lyrics for the current track, looked up online by title and
 /// artist: NetEase Cloud Music first (best coverage for Chinese songs), then
 /// LRCLIB. Results are cached for the session; a miss is cached too.
+///
+/// Players decorate titles ("像鱼 (Live)", "如果累了就回故乡 (去山野里走一趟)"),
+/// so a title also matches without its brackets and a trailing " - …"; the
+/// artist must match too, because a cover with the same title has other timing.
 final class LyricsProvider {
     static let shared = LyricsProvider()
 
@@ -78,24 +82,44 @@ final class LyricsProvider {
         return components?.url
     }
 
-    private static func normalized(_ text: String) -> String {
-        text.lowercased().filter { !$0.isWhitespace && !$0.isPunctuation }
+    /// The titles to search with: as the player says it, then without decorations.
+    private static func searchTitles(_ title: String) -> [String] {
+        let plain = LyricsMatch.undecorated(title)
+        return plain.isEmpty || plain == title ? [title] : [title, plain]
+    }
+
+    /// Runs `step` for each title until one finds lines.
+    private func firstHit(_ titles: [String], _ step: @escaping (String, @escaping ([Line]) -> Void) -> Void,
+                          completion: @escaping ([Line]) -> Void) {
+        guard let title = titles.first else { completion([]); return }
+        step(title) { [weak self] lines in
+            if !lines.isEmpty { completion(lines); return }
+            guard let self else { completion([]); return }
+            self.firstHit(Array(titles.dropFirst()), step, completion: completion)
+        }
     }
 
     private func fetchNetEase(title: String, artist: String, completion: @escaping ([Line]) -> Void) {
+        firstHit(Self.searchTitles(title), { [weak self] query, done in
+            self?.fetchNetEase(query: query, title: title, artist: artist, completion: done) ?? done([])
+        }, completion: completion)
+    }
+
+    private func fetchNetEase(query: String, title: String, artist: String, completion: @escaping ([Line]) -> Void) {
         let headers = ["Referer": "https://music.163.com"]
         guard let search = url("https://music.163.com/api/search/get",
-                               ["s": "\(title) \(artist)", "type": "1", "limit": "5"]) else {
+                               ["s": "\(query) \(artist)", "type": "1", "limit": "10"]) else {
             completion([]); return
         }
         json(search, headers: headers) { [weak self] object in
             guard let self,
                   let songs = ((object as? [String: Any])?["result"] as? [String: Any])?["songs"] as? [[String: Any]],
                   !songs.isEmpty else { completion([]); return }
-            // Prefer an exact title match; never take a different song.
-            let wanted = Self.normalized(title)
-            guard let song = songs.first(where: { Self.normalized($0["name"] as? String ?? "") == wanted }),
-                  let id = song["id"] as? NSNumber,
+            // Same title and same artist; never another song or someone's cover.
+            let song = LyricsMatch.best(songs, title: title, artist: artist,
+                                        name: { $0["name"] as? String ?? "" },
+                                        artists: { ($0["artists"] as? [[String: Any]] ?? []).compactMap { $0["name"] as? String } })
+            guard let id = song?["id"] as? NSNumber,
                   let lyric = self.url("https://music.163.com/api/song/lyric", ["id": id.stringValue, "lv": "1"])
             else { completion([]); return }
             self.json(lyric, headers: headers) { object in
@@ -106,13 +130,17 @@ final class LyricsProvider {
     }
 
     private func fetchLRCLib(title: String, artist: String, completion: @escaping ([Line]) -> Void) {
-        guard let search = url("https://lrclib.net/api/search",
-                               ["track_name": title, "artist_name": artist]) else { completion([]); return }
-        json(search) { object in
-            let hits = object as? [[String: Any]] ?? []
-            let synced = hits.compactMap { $0["syncedLyrics"] as? String }.first { !$0.isEmpty } ?? ""
-            completion(Self.parseLRC(synced))
-        }
+        firstHit(Self.searchTitles(title), { [weak self] query, done in
+            guard let self, let search = self.url("https://lrclib.net/api/search",
+                                                  ["track_name": query, "artist_name": artist]) else { done([]); return }
+            self.json(search) { object in
+                let hits = (object as? [[String: Any]] ?? []).filter { !(($0["syncedLyrics"] as? String) ?? "").isEmpty }
+                let hit = LyricsMatch.best(hits, title: title, artist: artist,
+                                           name: { $0["trackName"] as? String ?? "" },
+                                           artists: { [$0["artistName"] as? String ?? ""] })
+                done(Self.parseLRC(hit?["syncedLyrics"] as? String ?? ""))
+            }
+        }, completion: completion)
     }
 
     /// "[01:23.45]text" lines (several time tags per line allowed).
@@ -137,5 +165,88 @@ final class LyricsProvider {
             for time in times { out.append(Line(time: time, text: line)) }
         }
         return out.sorted { $0.time < $1.time }
+    }
+}
+
+/// Whether an online search result is the track that is playing.
+enum LyricsMatch {
+    /// Lowercased, without spaces and punctuation: "G.E.M. 邓紫棋" → "gem邓紫棋".
+    static func folded(_ text: String) -> String {
+        text.lowercased().filter { !$0.isWhitespace && !$0.isPunctuation && !$0.isSymbol }
+    }
+
+    /// Drops bracketed parts ("(Live)", "（去山野里走一趟）", "[Explicit]", "【DJ版】")
+    /// and a trailing " - Remastered" style suffix.
+    static func undecorated(_ text: String) -> String {
+        var out = ""
+        var depth = 0
+        for character in text {
+            switch character {
+            case "(", "[", "（", "【", "《": depth += 1
+            case ")", "]", "）", "】", "》": depth = max(0, depth - 1)
+            default: if depth == 0 { out.append(character) }
+            }
+        }
+        for separator in [" - ", " – ", " — "] {
+            if let range = out.range(of: separator) { out = String(out[..<range.lowerBound]) }
+        }
+        return out.trimmingCharacters(in: .whitespaces)
+    }
+
+    /// Same title, or the same once decorations are dropped on both sides.
+    /// No containment: one song's name can be the start of another's.
+    static func title(_ candidate: String, matches wanted: String) -> Bool {
+        let a = folded(candidate), b = folded(wanted)
+        guard !a.isEmpty, !b.isEmpty else { return false }
+        if a == b { return true }
+        let plainA = folded(undecorated(candidate)), plainB = folded(undecorated(wanted))
+        return !plainA.isEmpty && plainA == plainB
+    }
+
+    /// Some artist of the result is one of the playing track's artists
+    /// ("A / B", "A、B", "A&B", "A feat. B"). An unknown artist matches anything.
+    static func artists(_ candidates: [String], match wanted: String) -> Bool {
+        let people = names(wanted)
+        guard !people.isEmpty else { return true }
+        let found = candidates.flatMap(names)
+        return found.contains { name in
+            people.contains { $0 == name || (min($0.count, name.count) >= 2 && ($0.contains(name) || name.contains($0))) }
+        }
+    }
+
+    /// Versions without vocals; skipped unless that is what is playing.
+    static let instrumentalWords = ["伴奏", "纯音乐", "instrumental", "karaoke", "off vocal", "inst."]
+
+    static func isInstrumental(_ title: String) -> Bool {
+        let lower = title.lowercased()
+        return instrumentalWords.contains { lower.contains($0) }
+    }
+
+    /// The result that is the playing track: same title and artist, the exact
+    /// title first, then the plain one before other versions ("像鱼" before
+    /// "像鱼（DJ版）"), and no instrumental unless the playing title is one.
+    static func best<T>(_ results: [T], title wanted: String, artist: String,
+                        name: (T) -> String, artists: (T) -> [String]) -> T? {
+        let wantsInstrumental = isInstrumental(wanted)
+        let matching = results.filter { result in
+            let candidate = name(result)
+            return title(candidate, matches: wanted) && self.artists(artists(result), match: artist)
+                && (wantsInstrumental || !isInstrumental(candidate))
+        }
+        // Exact title, then a plain one ("像鱼"), then another version ("像鱼（DJ版）").
+        func rank(_ result: T) -> Int {
+            let candidate = name(result)
+            if folded(candidate) == folded(wanted) { return 0 }
+            return folded(undecorated(candidate)) == folded(candidate) ? 1 : 2
+        }
+        return matching.enumerated().min { (rank($0.element), $0.offset) < (rank($1.element), $1.offset) }?.element
+    }
+
+    private static func names(_ text: String) -> [String] {
+        var parts = [text]
+        for separator in ["/", "、", "&", "，", ",", ";", " x ", " X ", " feat. ", " feat ", " ft. ", " with "] {
+            parts = parts.flatMap { $0.components(separatedBy: separator) }
+        }
+        return parts.map(folded).filter { !$0.isEmpty }
     }
 }
