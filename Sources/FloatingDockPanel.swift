@@ -775,7 +775,8 @@ final class FloatingDockPanel: NSPanel, EscDismissable {
         // Lyrics are only looked up when something shows them.
         var line = ""
         if mediaStyle == 1, let position,
-           let lines = LyricsProvider.shared.lines(title: media.title, artist: media.artist) {
+           let lines = LyricsProvider.shared.lines(title: media.title, artist: media.artist,
+                                                         duration: media.duration) {
             line = LyricsProvider.current(in: lines, at: position) ?? ""
         }
         if line != lastLyric || force {

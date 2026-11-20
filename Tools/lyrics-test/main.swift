@@ -41,6 +41,15 @@ func offline() {
     let exact = LyricsMatch.best([("像鱼", "王贰浪"), ("像鱼 (Live)", "王贰浪")], title: "像鱼 (Live)", artist: "王贰浪",
                                  name: { $0.0 }, artists: { [$0.1] })
     check("… and an exact title over a plain one", exact?.0 == "像鱼 (Live)", "\(String(describing: exact))")
+    let versions = [("孤城", "7paste/Lee 木子/艾利（Ellie）", 227.3), ("孤城 (深秋忧郁合唱rnb版)", "7paste/艾利（Ellie）", 198.1)]
+    check("another version of the song (other length) is never taken",
+          LyricsMatch.best(versions, title: "孤城(空灵鼓版梦幻DJ)", artist: "艾利（Ellie）, 7paste, Lee 木子", duration: 277.99,
+                           name: { $0.0 }, artists: { [$0.1] }, length: { $0.2 }) == nil)
+    check("the same recording a second or two apart still matches; an unknown length matches",
+          LyricsMatch.best(versions, title: "孤城", artist: "7paste", duration: 229, name: { $0.0 }, artists: { [$0.1] },
+                           length: { $0.2 })?.2 == 227.3
+          && LyricsMatch.best(versions, title: "孤城", artist: "7paste", duration: 0, name: { $0.0 }, artists: { [$0.1] },
+                              length: { $0.2 }) != nil)
     check("an instrumental is taken when that is what plays",
           LyricsMatch.best([("像鱼 (伴奏)", "王贰浪")], title: "像鱼 (伴奏)", artist: "王贰浪",
                            name: { $0.0 }, artists: { [$0.1] }) != nil)
@@ -51,17 +60,19 @@ func offline() {
 /// Real lookups through LyricsProvider (network). Each entry: title and artist
 /// as the player reports them, and whether lyrics should be found.
 func live() {
-    let cases: [(String, String, Bool, String)] = [
-        ("自由的你", "G.E.M.邓紫棋", true, "plain title (QQ Music)"),
-        ("像鱼 (Live)", "王贰浪", true, "decorated title"),
-        ("Chills", "Le Youth", true, "English title (NetEase)"),
-        ("如果累了就回故乡 (去山野里走一趟)", "苏栖", false, "汽水音乐 cover found nowhere: no one else's lyrics"),
+    let cases: [(String, String, Double, Bool, String)] = [
+        ("自由的你", "G.E.M.邓紫棋", 296, true, "plain title (QQ Music)"),
+        ("像鱼 (Live)", "王贰浪", 0, true, "decorated title"),
+        ("Chills", "Le Youth", 0, true, "English title (NetEase)"),
+        ("如果累了就回故乡 (去山野里走一趟)", "苏栖", 263.32, false, "汽水音乐 cover found nowhere: no one else's lyrics"),
+        ("孤城(空灵鼓版梦幻DJ)", "艾利（Ellie）, 7paste, Lee 木子", 277.99, false,
+         "DJ version: the 227 s original would run out of step"),
     ]
-    for (title, artist, expected, note) in cases {
+    for (title, artist, duration, expected, note) in cases {
         var result: [LyricsProvider.Line]?
         let deadline = Date().addingTimeInterval(25)
         while Date() < deadline {
-            result = LyricsProvider.shared.lines(title: title, artist: artist)
+            result = LyricsProvider.shared.lines(title: title, artist: artist, duration: duration)
             if result != nil { break }
             RunLoop.main.run(until: Date().addingTimeInterval(0.2))
         }

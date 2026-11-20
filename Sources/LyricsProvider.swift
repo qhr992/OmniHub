@@ -10,7 +10,9 @@ extension Notification.Name {
 ///
 /// Players decorate titles ("像鱼 (Live)", "如果累了就回故乡 (去山野里走一趟)"),
 /// so a title also matches without its brackets and a trailing " - …"; the
-/// artist must match too, because a cover with the same title has other timing.
+/// artist must match too, because a cover with the same title has other timing,
+/// and so must the length: a remix or DJ version under the same name
+/// ("孤城(空灵鼓版梦幻DJ)", 278 s, vs "孤城", 227 s) would run out of step.
 final class LyricsProvider {
     static let shared = LyricsProvider()
 
@@ -27,17 +29,20 @@ final class LyricsProvider {
         return URLSession(configuration: configuration)
     }()
 
-    private func key(_ title: String, _ artist: String) -> String { "\(title)\u{1F}\(artist)" }
+    private func key(_ title: String, _ artist: String, _ duration: Double) -> String {
+        "\(title)\u{1F}\(artist)\u{1F}\(Int(duration.rounded()))"
+    }
 
     /// Cached lines, or nil while unknown (a lookup is started). An empty
     /// array means "looked, none found".
-    func lines(title: String, artist: String) -> [Line]? {
+    /// `duration`: the playing track's length in seconds (0 when unknown).
+    func lines(title: String, artist: String, duration: Double = 0) -> [Line]? {
         guard !title.isEmpty else { return [] }
-        let key = key(title, artist)
+        let key = key(title, artist, duration)
         if let hit = cache[key] { return hit }
         guard !loading.contains(key) else { return nil }
         loading.insert(key)
-        fetch(title: title, artist: artist) { [weak self] lines in
+        fetch(title: title, artist: artist, duration: duration) { [weak self] lines in
             DispatchQueue.main.async {
                 self?.loading.remove(key)
                 self?.cache[key] = lines
@@ -59,11 +64,11 @@ final class LyricsProvider {
 
     // MARK: Lookup
 
-    private func fetch(title: String, artist: String, completion: @escaping ([Line]) -> Void) {
-        fetchNetEase(title: title, artist: artist) { [weak self] lines in
+    private func fetch(title: String, artist: String, duration: Double, completion: @escaping ([Line]) -> Void) {
+        fetchNetEase(title: title, artist: artist, duration: duration) { [weak self] lines in
             if !lines.isEmpty { completion(lines); return }
             guard let self else { completion([]); return }
-            self.fetchLRCLib(title: title, artist: artist, completion: completion)
+            self.fetchLRCLib(title: title, artist: artist, duration: duration, completion: completion)
         }
     }
 
@@ -99,13 +104,14 @@ final class LyricsProvider {
         }
     }
 
-    private func fetchNetEase(title: String, artist: String, completion: @escaping ([Line]) -> Void) {
+    private func fetchNetEase(title: String, artist: String, duration: Double, completion: @escaping ([Line]) -> Void) {
         firstHit(Self.searchTitles(title), { [weak self] query, done in
-            self?.fetchNetEase(query: query, title: title, artist: artist, completion: done) ?? done([])
+            self?.fetchNetEase(query: query, title: title, artist: artist, duration: duration, completion: done) ?? done([])
         }, completion: completion)
     }
 
-    private func fetchNetEase(query: String, title: String, artist: String, completion: @escaping ([Line]) -> Void) {
+    private func fetchNetEase(query: String, title: String, artist: String, duration: Double,
+                              completion: @escaping ([Line]) -> Void) {
         let headers = ["Referer": "https://music.163.com"]
         guard let search = url("https://music.163.com/api/search/get",
                                ["s": "\(query) \(artist)", "type": "1", "limit": "10"]) else {
@@ -116,9 +122,10 @@ final class LyricsProvider {
                   let songs = ((object as? [String: Any])?["result"] as? [String: Any])?["songs"] as? [[String: Any]],
                   !songs.isEmpty else { completion([]); return }
             // Same title and same artist; never another song or someone's cover.
-            let song = LyricsMatch.best(songs, title: title, artist: artist,
+            let song = LyricsMatch.best(songs, title: title, artist: artist, duration: duration,
                                         name: { $0["name"] as? String ?? "" },
-                                        artists: { ($0["artists"] as? [[String: Any]] ?? []).compactMap { $0["name"] as? String } })
+                                        artists: { ($0["artists"] as? [[String: Any]] ?? []).compactMap { $0["name"] as? String } },
+                                        length: { (($0["duration"] as? NSNumber)?.doubleValue ?? 0) / 1000 })
             guard let id = song?["id"] as? NSNumber,
                   let lyric = self.url("https://music.163.com/api/song/lyric", ["id": id.stringValue, "lv": "1"])
             else { completion([]); return }
@@ -129,15 +136,16 @@ final class LyricsProvider {
         }
     }
 
-    private func fetchLRCLib(title: String, artist: String, completion: @escaping ([Line]) -> Void) {
+    private func fetchLRCLib(title: String, artist: String, duration: Double, completion: @escaping ([Line]) -> Void) {
         firstHit(Self.searchTitles(title), { [weak self] query, done in
             guard let self, let search = self.url("https://lrclib.net/api/search",
                                                   ["track_name": query, "artist_name": artist]) else { done([]); return }
             self.json(search) { object in
                 let hits = (object as? [[String: Any]] ?? []).filter { !(($0["syncedLyrics"] as? String) ?? "").isEmpty }
-                let hit = LyricsMatch.best(hits, title: title, artist: artist,
+                let hit = LyricsMatch.best(hits, title: title, artist: artist, duration: duration,
                                            name: { $0["trackName"] as? String ?? "" },
-                                           artists: { [$0["artistName"] as? String ?? ""] })
+                                           artists: { [$0["artistName"] as? String ?? ""] },
+                                           length: { ($0["duration"] as? NSNumber)?.doubleValue ?? 0 })
                 done(Self.parseLRC(hit?["syncedLyrics"] as? String ?? ""))
             }
         }, completion: completion)
@@ -222,16 +230,25 @@ enum LyricsMatch {
         return instrumentalWords.contains { lower.contains($0) }
     }
 
-    /// The result that is the playing track: same title and artist, the exact
-    /// title first, then the plain one before other versions ("像鱼" before
-    /// "像鱼（DJ版）"), and no instrumental unless the playing title is one.
-    static func best<T>(_ results: [T], title wanted: String, artist: String,
-                        name: (T) -> String, artists: (T) -> [String]) -> T? {
+    /// Lengths of one recording on two services differ by a second or two
+    /// (trimmed silence); another version of the song is off by much more.
+    static func sameLength(_ candidate: Double, _ wanted: Double) -> Bool {
+        guard candidate > 0, wanted > 0 else { return true }   // unknown: cannot tell
+        return abs(candidate - wanted) <= max(4, wanted * 0.02)
+    }
+
+    /// The result that is the playing track: same title, artist and length
+    /// (`duration` 0 = unknown), the exact title first, then the plain one
+    /// before other versions ("像鱼" before "像鱼（DJ版）"), and no
+    /// instrumental unless the playing title is one.
+    static func best<T>(_ results: [T], title wanted: String, artist: String, duration: Double = 0,
+                        name: (T) -> String, artists: (T) -> [String], length: (T) -> Double = { _ in 0 }) -> T? {
         let wantsInstrumental = isInstrumental(wanted)
         let matching = results.filter { result in
             let candidate = name(result)
             return title(candidate, matches: wanted) && self.artists(artists(result), match: artist)
                 && (wantsInstrumental || !isInstrumental(candidate))
+                && sameLength(length(result), duration)
         }
         // Exact title, then a plain one ("像鱼"), then another version ("像鱼（DJ版）").
         func rank(_ result: T) -> Int {
