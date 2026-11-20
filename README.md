@@ -15,8 +15,8 @@ A menu bar suite for macOS. Screenshots, pinned images, clipboard history, Now P
 **Screenshots.**
 - Capture with window detection, a magnifier and annotations with undo and redo: frames (rectangle or ellipse), arrows, pen, text, and a mosaic brush in three sizes to hide sensitive content. The chosen tool's options (shape, colour, brush size) open in a strip under the toolbar.
 - Move or resize the selection before confirming.
-- Copy, save, or pin the result.
-- Scrolling capture stitches a long page while you scroll it yourself.
+- Copy, save, or pin the result. Save opens in the folder you saved to last.
+- Scrolling capture stitches a long page while you scroll it yourself, or hold ↓ for a slow, steady scroll (↑ / ↓ step one notch).
 
 **Pins.**
 - Float any screenshot or clipboard image above every window.
@@ -66,7 +66,7 @@ A menu bar suite for macOS. Screenshots, pinned images, clipboard history, Now P
 | Permission | Required for |
 |---|---|
 | Screen Recording | Screenshots, scrolling capture and pins (required) |
-| Accessibility | Controlling players through their menus (optional) |
+| Accessibility | Controlling players through their menus; scrolling with ↑ / ↓ during a scrolling capture (optional) |
 | Calendars | Showing calendar events in Agenda (optional) |
 
 Grant Screen Recording in **System Settings → Privacy & Security → Screen Recording**, then restart OmniHub. Permissions that are missing are shown in red in Settings.

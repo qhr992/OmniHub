@@ -150,6 +150,8 @@ final class ScrollCaptureController {
     /// not frontmost here (the user is scrolling another app), so a local key
     /// monitor would never see it.
     private var escapeHotKey: HotKey?
+    /// ↑ / ↓ scroll the page under the region while capturing.
+    private(set) var keyScroller: KeyScroller?
 
     /// Sampling has to outrun the scroll: two consecutive frames must still
     /// overlap, and a trackpad flick moves thousands of points per second.
@@ -160,6 +162,9 @@ final class ScrollCaptureController {
     private var gotFirstFrame = false
     private var gotScroll = false
     private var lastProgress = Date()
+
+    /// Test hook: rows stitched so far (read from the main thread; approximate).
+    var debugStitchedHeight: Int { stitcher.height }
 
     /// Test hook: receive the result instead of the clipboard.
     var onResult: ((CGImage?, CGFloat, Int) -> Void)?
@@ -177,6 +182,9 @@ final class ScrollCaptureController {
         escapeHotKey = HotKey(keyCode: UInt32(kVK_Escape), carbonModifiers: 0) { [weak self] in
             self?.finish()
         }
+        let keys = KeyScroller(region: region)
+        keys.start()
+        keyScroller = keys
 
         // Let the selection overlay disappear from the screen first.
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.25) { [weak self] in
@@ -260,6 +268,8 @@ final class ScrollCaptureController {
         frames?.stop()
         frames = nil
         escapeHotKey = nil
+        keyScroller?.stop()
+        keyScroller = nil
         hud?.orderOut(nil)
         hud = nil
         border?.orderOut(nil)
@@ -344,7 +354,7 @@ final class ScrollHUD: NSPanel {
 
     init(onFinish: @escaping () -> Void) {
         self.onFinish = onFinish
-        super.init(contentRect: NSRect(x: 0, y: 0, width: 380, height: 40),
+        super.init(contentRect: NSRect(x: 0, y: 0, width: 440, height: 40),
                    styleMask: [.borderless, .nonactivatingPanel],
                    backing: .buffered,
                    defer: false)
@@ -385,7 +395,7 @@ final class ScrollHUD: NSPanel {
         contentView = effect
     }
 
-    private let baseText = "Scrolling screenshot: scroll down"
+    private let baseText = "Scrolling screenshot: scroll down or hold ↓"
 
     @objc private func finishTapped() { onFinish() }
 

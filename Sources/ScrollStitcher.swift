@@ -52,6 +52,12 @@ struct ScrollFrame {
 /// overlap to find how far the content moved up (`shift`). Rows that never
 /// move between frames (sticky headers / footers) are detected and left out
 /// of the matching; the footer is appended once at the end.
+///
+/// When the overlap as a whole does not match because part of the page
+/// changed (a sticky bar that shows up after some scrolling, a hover effect,
+/// an image loading), the shift is looked up again row by row: most rows of
+/// the overlap still agree. Only a frame with no overlap at all is appended
+/// unmatched — appending a frame that does overlap would repeat content.
 final class ScrollStitcher {
     private(set) var width: Int = 0
     /// Rows committed so far, excluding the pinned footer.
@@ -77,6 +83,10 @@ final class ScrollStitcher {
 
     /// Mean per-row signature distance above which a shift is rejected.
     private let matchThreshold: Float = 2.5
+    /// Row by row: a row agrees below this distance, and a shift is taken
+    /// when at least `agreeShare` of the overlap agrees.
+    private let rowAgreeThreshold: Float = 1.5
+    private let agreeShare: Float = 0.75
     /// Rows whose signatures differ by less than this count as unchanged.
     private let staticEpsilon: Float = 0.35
     /// Hard cap so a runaway capture cannot exhaust memory.
@@ -153,6 +163,11 @@ final class ScrollStitcher {
             }
         }
 
+        if bestScore > matchThreshold,
+           let partial = partialMatch(signatures, top: top, band: band, minOverlap: minOverlap) {
+            bestShift = partial
+            bestScore = 0
+        }
         if bestShift == 0, bestScore <= matchThreshold {
             strayedCount = 0
             return 0                                      // nothing moved
@@ -185,6 +200,32 @@ final class ScrollStitcher {
         self.previous = frame
         previousSignatures = signatures
         return allowed
+    }
+
+    /// The shift at which the largest share of overlapping rows agree, when
+    /// that share reaches `agreeShare`; the smallest such shift on a tie, for
+    /// the same reason as in `append`. Nil when no shift is convincing.
+    private func partialMatch(_ signatures: [Float], top: Int, band: Int, minOverlap: Int) -> Int? {
+        var best: (shift: Int, share: Float)?
+        for shift in 0...(band - minOverlap) {
+            let overlap = band - shift
+            let needed = Int((agreeShare * Float(overlap)).rounded(.up))
+            let allowedMisses = overlap - max(needed, Int(((best?.share ?? 0) * Float(overlap)).rounded(.down)))
+            var agree = 0
+            var misses = 0
+            for k in 0..<overlap {
+                if distance(previousSignatures, top + shift + k, signatures, top + k) < rowAgreeThreshold {
+                    agree += 1
+                } else {
+                    misses += 1
+                    if misses > allowedMisses { break }             // cannot beat the best any more
+                }
+            }
+            let share = Float(agree) / Float(overlap)
+            guard agree >= needed, agree >= minOverlap else { continue }
+            if share > (best?.share ?? 0) + 1e-4 { best = (shift, share) }
+        }
+        return best?.shift
     }
 
     /// No overlap with the previous frame (scrolled further than one
