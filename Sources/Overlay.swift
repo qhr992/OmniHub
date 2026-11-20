@@ -166,13 +166,35 @@ final class SnipSession {
         let panel = NSSavePanel()
         panel.allowedContentTypes = [.png]
         panel.nameFieldStringValue = timestampName()
-        panel.directoryURL = FileManager.default.urls(for: .desktopDirectory, in: .userDomainMask).first
+        panel.directoryURL = SaveFolder.current
         guard panel.runModal() == .OK, let url = panel.url, let png = pngData(image) else { return }
         do {
             try png.write(to: url)
+            SaveFolder.remember(url)
             Toast.show("Saved: \(url.lastPathComponent)")
         } catch {
             Toast.show("Save failed: \(error.localizedDescription)", duration: 2.5)
+        }
+    }
+
+    /// The folder the save panel opens in: where the last screenshot was saved,
+    /// or the Desktop when that folder is gone.
+    enum SaveFolder {
+        static let key = "snip.saveFolder"
+
+        static var current: URL? {
+            if let path = UserDefaults.standard.string(forKey: key) {
+                var isFolder: ObjCBool = false
+                if FileManager.default.fileExists(atPath: path, isDirectory: &isFolder), isFolder.boolValue {
+                    return URL(fileURLWithPath: path, isDirectory: true)
+                }
+            }
+            return FileManager.default.urls(for: .desktopDirectory, in: .userDomainMask).first
+        }
+
+        /// `file`: the screenshot just saved.
+        static func remember(_ file: URL) {
+            UserDefaults.standard.set(file.deletingLastPathComponent().path, forKey: key)
         }
     }
 

@@ -28,6 +28,7 @@ SOURCES=(
   Sources/PinnedImageWindow.swift
   Sources/ScrollStitcher.swift
   Sources/ScrollCapture.swift
+  Sources/ScrollKeys.swift
   Sources/ScrollSelfTest.swift
   Sources/Store.swift
   Sources/TaskStore.swift

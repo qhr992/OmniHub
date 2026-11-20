@@ -434,6 +434,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         case "debug/scroll-selftest/slow": ScrollSelfTest.run(mode: "slow")
         case "debug/scroll-selftest/flick": ScrollSelfTest.run(mode: "flick")
         case "debug/scroll-selftest/jump": ScrollSelfTest.run(mode: "jump")
+        case "debug/scroll-selftest/sticky": ScrollSelfTest.run(mode: "sticky")
+        case "debug/scroll-selftest/keys": ScrollSelfTest.run(mode: "keys")
+        case "debug/scroll-keys-region":
+            let query = Dictionary(uniqueKeysWithValues: (URLComponents(url: url, resolvingAgainstBaseURL: false)?
+                .queryItems ?? []).map { ($0.name, Double($0.value ?? "") ?? 0) })
+            ScrollSelfTest.runKeys(region: CGRect(x: query["x"] ?? 0, y: query["y"] ?? 0,
+                                                  width: query["w"] ?? 0, height: query["h"] ?? 0))
         case "debug/dock/top": FloatingDockPanel.debugMove(x: 0.5, y: 1)
         case "debug/dock/bottom": FloatingDockPanel.debugMove(x: 0.3, y: 0)
         case "debug/dock/left": FloatingDockPanel.debugMove(x: 0, y: 0.5)

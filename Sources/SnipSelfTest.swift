@@ -303,6 +303,23 @@ enum SnipSelfTest {
               "top \(top) bottom \(bottom)")
     }
 
+    /// The save panel opens where the last screenshot went, or on the Desktop
+    /// once that folder is gone.
+    private static func checkSaveFolder() {
+        typealias Folder = SnipSession.SaveFolder
+        let saved = UserDefaults.standard.object(forKey: Folder.key)
+        defer { UserDefaults.standard.set(saved, forKey: Folder.key) }
+        let desktop = FileManager.default.urls(for: .desktopDirectory, in: .userDomainMask).first?.standardizedFileURL
+        let folder = FileManager.default.temporaryDirectory.appendingPathComponent("omnihub-save-\(UUID().uuidString)")
+        try? FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
+        Folder.remember(folder.appendingPathComponent("OmniHub-test.png"))
+        let remembered = Folder.current?.standardizedFileURL.path == folder.standardizedFileURL.path
+        try? FileManager.default.removeItem(at: folder)
+        let fallback = Folder.current?.standardizedFileURL == desktop
+        check("the save panel opens in the folder of the last save, and on the Desktop once it is gone",
+              remembered && fallback, "\(String(describing: Folder.current))")
+    }
+
     /// Esc leaves the screenshot in one press, from every stage.
     private static func checkEscapeLeaves(capture: DisplayCapture) {
         func controller(_ setup: (SnipSession) -> Void) -> OverlayController {
@@ -424,6 +441,7 @@ enum SnipSelfTest {
         checkToolFeedback(capture: capture)
         checkEscapeLeaves(capture: capture)
         checkMosaic()
+        checkSaveFolder()
 
         print(failures == 0 ? "snip selftest: all passed" : "snip selftest: \(failures) failed")
         exit(failures == 0 ? 0 : 1)

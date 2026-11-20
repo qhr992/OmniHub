@@ -2,18 +2,20 @@ import AppKit
 import Carbon.HIToolbox
 
 /// Global hotkey through Carbon:
-/// `InstallEventHandler` on `kEventClassKeyboard`/`kEventHotKeyPressed` plus
-/// `RegisterEventHotKey`. Carbon's hotkey API is still the only route to a
+/// `InstallEventHandler` on `kEventClassKeyboard`/`kEventHotKeyPressed`
+/// (and `…Released` for keys that act while held) plus `RegisterEventHotKey`. Carbon's hotkey API is still the only route to a
 /// system-wide shortcut that needs no Accessibility permission.
 final class HotKey {
-    private static var registry: [UInt32: () -> Void] = [:]
+    private static var registry: [UInt32: (press: () -> Void, release: (() -> Void)?)] = [:]
     private static var nextID: UInt32 = 1
     private static var handlerRef: EventHandlerRef?
 
     private var hotKeyRef: EventHotKeyRef?
     private let id: UInt32
 
-    init?(keyCode: UInt32, carbonModifiers: UInt32, action: @escaping () -> Void) {
+    /// `onRelease`: also told when the key goes up (for keys that act while held).
+    init?(keyCode: UInt32, carbonModifiers: UInt32, action: @escaping () -> Void,
+          onRelease: (() -> Void)? = nil) {
         HotKey.installHandlerIfNeeded()
         let newID = HotKey.nextID
         HotKey.nextID += 1
@@ -30,7 +32,7 @@ final class HotKey {
         guard status == noErr, let ref else { return nil }
         self.hotKeyRef = ref
         self.id = newID
-        HotKey.registry[newID] = action
+        HotKey.registry[newID] = (action, onRelease)
     }
 
     deinit {
@@ -40,8 +42,8 @@ final class HotKey {
 
     private static func installHandlerIfNeeded() {
         guard handlerRef == nil else { return }
-        var spec = EventTypeSpec(eventClass: OSType(kEventClassKeyboard),
-                                 eventKind: UInt32(kEventHotKeyPressed))
+        var specs = [EventTypeSpec(eventClass: OSType(kEventClassKeyboard), eventKind: UInt32(kEventHotKeyPressed)),
+                     EventTypeSpec(eventClass: OSType(kEventClassKeyboard), eventKind: UInt32(kEventHotKeyReleased))]
         let callback: EventHandlerUPP = { _, event, _ in
             guard let event else { return OSStatus(eventNotHandledErr) }
             var hotKeyID = EventHotKeyID()
@@ -52,13 +54,18 @@ final class HotKey {
                                         MemoryLayout<EventHotKeyID>.size,
                                         nil,
                                         &hotKeyID)
-            guard err == noErr, let action = HotKey.registry[hotKeyID.id] else {
+            guard err == noErr, let entry = HotKey.registry[hotKeyID.id] else {
                 return OSStatus(eventNotHandledErr)
             }
-            DispatchQueue.main.async(execute: action)
+            if GetEventKind(event) == UInt32(kEventHotKeyReleased) {
+                guard let release = entry.release else { return OSStatus(eventNotHandledErr) }
+                DispatchQueue.main.async(execute: release)
+            } else {
+                DispatchQueue.main.async(execute: entry.press)
+            }
             return noErr
         }
-        InstallEventHandler(GetApplicationEventTarget(), callback, 1, &spec, nil, &handlerRef)
+        InstallEventHandler(GetApplicationEventTarget(), callback, specs.count, &specs, nil, &handlerRef)
     }
 }
 
