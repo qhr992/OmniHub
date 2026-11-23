@@ -51,6 +51,7 @@ final class TerminalSession {
     let target: RemoteTarget?
     let scrollView = NSScrollView()
     private let textView = TerminalTextView(frame: NSRect(x: 0, y: 0, width: 780, height: 380))
+    private lazy var cursor = TerminalCursor(textView: textView)
     private let buffer = TerminalBuffer()
     private var masterFD: Int32 = -1
     private var childPID: pid_t = 0
@@ -128,6 +129,7 @@ final class TerminalSession {
         textView.onAction = { [weak self] action in self?.perform(action) ?? false }
         // The first prompt may be drawn before the view is on the (dark) card.
         textView.onAppearanceChange = { [weak self] in self?.render() }
+        textView.onFocusChange = { [weak self] in self?.cursor.focusChanged() }
 
         scrollView.documentView = textView
         scrollView.hasVerticalScroller = true
@@ -547,12 +549,8 @@ final class TerminalSession {
                             length: max(0, storage.length - offset))
         storage.beginEditing()
         storage.replaceCharacters(in: range, with: NSAttributedString(string: text, attributes: attributes))
-        if let cursorRange, cursorRange.upperBound <= storage.length {
-            let colors = cursorColors()
-            storage.addAttributes([.backgroundColor: colors.back, .foregroundColor: colors.fore],
-                                  range: cursorRange)
-        }
         storage.endEditing()
+        cursor.move(to: cursorRange)
 
         renderedLengths.removeSubrange(from...)
         renderedLengths.append(contentsOf: lengths)
@@ -560,31 +558,11 @@ final class TerminalSession {
         textView.scrollToEndOfDocument(nil)
     }
 
-    /// Block cursor colours for the appearance the terminal is drawn in (the
-    /// card is always dark). A system colour turned into a fixed one outside
-    /// drawing takes the app's appearance instead — light when macOS is in
-    /// light mode — and gave a black block nobody could see on the dark card.
-    private func cursorColors() -> (back: NSColor, fore: NSColor) {
-        var back = NSColor.white.withAlphaComponent(Self.cursorAlpha)
-        var fore = NSColor.black
-        textView.effectiveAppearance.performAsCurrentDrawingAppearance {
-            back = (NSColor.textColor.usingColorSpace(.sRGB) ?? .white).withAlphaComponent(Self.cursorAlpha)
-            fore = NSColor.textBackgroundColor.usingColorSpace(.sRGB) ?? .black
-        }
-        return (back, fore)
-    }
-
-    private static let cursorAlpha: CGFloat = 0.8
-
-    /// Test hook: the cursor cell's background as drawn, in sRGB.
-    var debugCursorColor: NSColor? {
-        guard let storage = textView.textStorage else { return nil }
-        var found: NSColor?
-        storage.enumerateAttribute(.backgroundColor, in: NSRange(location: 0, length: storage.length)) { value, _, stop in
-            if let color = value as? NSColor { found = color; stop.pointee = true }
-        }
-        return found?.usingColorSpace(.sRGB)
-    }
+    /// Test hooks: the cursor cell's background as drawn (sRGB); start a
+    /// new breathing cycle; tell the cursor the focus changed.
+    var debugCursorColor: NSColor? { cursor.currentColor }
+    func debugRestartCursor() { cursor.move(to: cursor.range) }
+    func debugCursorFocusChanged() { cursor.focusChanged() }
 
     /// The font size changed: redraw everything and tell the shell the new
     /// number of columns.
@@ -628,6 +606,9 @@ final class TerminalTextView: NSTextView {
     var onInput: ((Data) -> Void)?
     var onAction: ((TerminalAction) -> Bool)?
     var onAppearanceChange: (() -> Void)?
+    /// The view gained or lost the keyboard (its own focus, or its window's).
+    var onFocusChange: (() -> Void)?
+    private var keyObservers: [NSObjectProtocol] = []
 
     override var acceptsFirstResponder: Bool { true }
 
@@ -636,15 +617,36 @@ final class TerminalTextView: NSTextView {
         onAppearanceChange?()
     }
 
+    override func viewDidMoveToWindow() {
+        super.viewDidMoveToWindow()
+        keyObservers.forEach(NotificationCenter.default.removeObserver)
+        keyObservers = []
+        if let window {
+            keyObservers = [NSWindow.didBecomeKeyNotification, NSWindow.didResignKeyNotification].map { name in
+                NotificationCenter.default.addObserver(forName: name, object: window, queue: .main) { [weak self] _ in
+                    self?.focusChanged()
+                }
+            }
+        }
+        focusChanged()
+    }
+
+    /// Reported once the responder change has settled.
+    private func focusChanged() {
+        DispatchQueue.main.async { [weak self] in self?.onFocusChange?() }
+    }
+
     override func becomeFirstResponder() -> Bool {
         let accepted = super.becomeFirstResponder()
         TerminalFocus.refresh()
+        focusChanged()
         return accepted
     }
 
     override func resignFirstResponder() -> Bool {
         let accepted = super.resignFirstResponder()
         TerminalFocus.refresh()
+        focusChanged()
         return accepted
     }
 

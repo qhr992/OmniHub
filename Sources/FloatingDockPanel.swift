@@ -1962,13 +1962,24 @@ final class FloatingDockPanel: NSPanel, EscDismissable {
     @objc private func menuSettings() { Self.open(.settings, toggle: false, settingsTab: 5, pinned: false) }
     @objc private func menuHide() { Self.toggle() }
 
-    /// Entry icons: the card switches to that page and stays open.
+    /// Entry icons: the card switches to that page.
     @objc private func navTapped(_ sender: NSButton) {
         guard sender.tag < Page.allCases.count else { return }
+        let target = Page.allCases[sender.tag]
         // A page reached by clicking is not pinned: it goes away when the
-        // card loses the keyboard. A card pinned by a hotkey stays pinned.
-        present(Page.allCases[sender.tag], hold: heldOpen, focus: true)
+        // card loses the keyboard. A hotkey pins only the page it opened;
+        // clicking over to another page ends that.
+        present(target, hold: heldOpen && target == page, focus: true)
     }
+
+    /// Test hook: an entry icon clicked (through its action).
+    static func debugTapNav(_ target: Page) {
+        guard let shared, let button = shared.navButtons[target], let action = button.action else { return }
+        NSApp.sendAction(action, to: button.target, from: button)
+    }
+
+    /// Test hook: whether the card is pinned open.
+    static var debugHeld: Bool { shared?.heldOpen ?? false }
 
 
     @objc private func togglePlayback() { MediaObserver.shared.togglePlayPause() }
@@ -1996,7 +2007,7 @@ final class FloatingDockPanel: NSPanel, EscDismissable {
 
     /// Home page to-do (double-click): the Agenda opens on that to-do.
     private func openTask(_ id: UUID) {
-        present(.tasks, hold: heldOpen, focus: true)
+        present(.tasks, hold: heldOpen && page == .tasks, focus: true)
         agendaPane.focus(taskID: id)
     }
 

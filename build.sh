@@ -46,6 +46,7 @@ SOURCES=(
   Sources/TerminalBuffer.swift
   Sources/TerminalKeymap.swift
   Sources/TerminalSession.swift
+  Sources/TerminalCursor.swift
   Sources/TerminalPane.swift
   Sources/TerminalSettingsView.swift
   Sources/ConnectionStore.swift

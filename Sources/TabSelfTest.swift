@@ -217,16 +217,7 @@ enum TabSelfTest {
             RunLoop.main.run(until: Date().addingTimeInterval(0.1))
         }
         RunLoop.main.run(until: Date().addingTimeInterval(0.5))
-        if let color = pane.activeSession?.debugCursorColor {
-            let light = color.redComponent * 0.3 + color.greenComponent * 0.59 + color.blueComponent * 0.11
-            check("terminal: the block cursor is light on the dark card",
-                  light > 0.7 && color.alphaComponent >= 0.7,
-                  "rgb \(String(format: "%.2f %.2f %.2f", color.redComponent, color.greenComponent, color.blueComponent)) alpha \(String(format: "%.2f", color.alphaComponent))")
-        } else {
-            check("terminal: the block cursor is drawn", false, "no cursor cell")
-        }
-
-        snap("tab-terminal-cursor.png")
+        cursorChecks(pane.activeSession)
 
         // ---- settings panel
         pane.debugToggle("settings")
@@ -260,6 +251,43 @@ enum TabSelfTest {
         pane.debugToggle("settings")
         pane.terminateAll()
         finish()
+    }
+
+    /// The cursor is light on the dark card and breathes while focused:
+    /// sampled through its real timer at the start, middle and end of a cycle.
+    private static func cursorChecks(_ session: TerminalSession?) {
+        guard let session else { return check("terminal: a shell tab is open", false) }
+        func sample(at seconds: TimeInterval, from start: Date) -> NSColor? {
+            RunLoop.main.run(until: start.addingTimeInterval(seconds))
+            return session.debugCursorColor
+        }
+        func describe(_ color: NSColor?) -> String {
+            guard let color else { return "none" }
+            return String(format: "rgb %.2f %.2f %.2f alpha %.2f", color.redComponent, color.greenComponent,
+                          color.blueComponent, color.alphaComponent)
+        }
+        let period = TerminalCursor.period
+        TerminalCursor.debugAlwaysFocused = true
+        session.debugRestartCursor()
+        let start = Date()
+        let bright = sample(at: 0.05, from: start)
+        snap("tab-terminal-cursor.png")
+        let faint = sample(at: period / 2, from: start)
+        snap("tab-terminal-cursor-faint.png")
+        let again = sample(at: period * 0.98, from: start)
+        let light = bright.map { $0.redComponent * 0.3 + $0.greenComponent * 0.59 + $0.blueComponent * 0.11 } ?? 0
+        check("terminal: the block cursor is light on the dark card", light > 0.7 && (bright?.alphaComponent ?? 0) >= 0.8,
+              describe(bright))
+        check("terminal: focused, the cursor breathes — bright, faint half way through, bright again",
+              (bright?.alphaComponent ?? 0) >= 0.8 && (faint?.alphaComponent ?? 1) <= 0.2
+                && (again?.alphaComponent ?? 0) >= 0.75,
+              "start \(describe(bright)) · middle \(describe(faint)) · end \(describe(again))")
+        TerminalCursor.debugAlwaysFocused = false
+        session.debugCursorFocusChanged()
+        let rest = Date()
+        let still = [sample(at: 0.1, from: rest), sample(at: period / 2, from: rest)].map { $0?.alphaComponent ?? -1 }
+        check("terminal: without the keyboard the cursor rests as a steady dim block",
+              still.allSatisfy { abs($0 - TerminalCursor.resting) < 0.01 }, "\(still)")
     }
 
     private static func finish() {
