@@ -76,6 +76,16 @@ enum TabOrder {
         return result
     }
 
+    /// Gives the keyboard to a panel that just opened over the page: its
+    /// first input field, else its first control. Otherwise the shell behind
+    /// keeps the keyboard and gets what is typed (and the Tab).
+    static func focusFirstField(in panel: NSView) {
+        panel.layoutSubtreeIfNeeded()
+        let stops = stops(in: panel)
+        guard let target = stops.first(where: { $0 is NSTextField }) ?? stops.first else { return }
+        panel.window?.makeFirstResponder(target)
+    }
+
     static func isStop(_ view: NSView) -> Bool {
         guard view.window != nil, !view.isHiddenOrHasHiddenAncestor,
               view.bounds.width > 0, view.bounds.height > 0 else { return false }

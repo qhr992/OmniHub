@@ -119,7 +119,7 @@ The boot animation and illustrations are generated from the sources in `Tools/bo
 |---|---|
 | Clipboard history, to-dos, terminal profiles, shelf files | `~/Library/Application Support/OmniHub/` |
 | Settings | UserDefaults domain `com.local.omnihub` |
-| Passwords | Login Keychain, service `com.local.omnihub.vault` |
+| Passwords | Login Keychain, service `com.local.omnihub.vault`, one item for all of them (macOS asks once, and once again after an update) |
 
 OmniHub makes network requests only to fetch lyrics (`music.163.com`, `lrclib.net`) and, if you turn it on, to look up your public IP address (`api.ipify.org`).
 

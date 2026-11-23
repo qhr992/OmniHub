@@ -50,6 +50,7 @@ SOURCES=(
   Sources/TerminalPane.swift
   Sources/TerminalSettingsView.swift
   Sources/ConnectionStore.swift
+  Sources/VaultSelfTest.swift
   Sources/NetHelpers.swift
   Sources/RemoteFiles.swift
   Sources/RemoteViews.swift

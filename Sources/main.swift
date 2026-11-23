@@ -65,19 +65,26 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
         // `--askpass-selftest`: a vault password must only reach an ssh that
         // OmniHub itself started, never a process that just sets the env var.
+        if args.contains("--vault-selftest") {
+            VaultSelfTest.run()
+        }
+
         if args.contains("--askpass-selftest") {
+            // A Keychain service of its own: the real vault is not touched.
+            let service = "com.local.omnihub.vault.askpass-selftest"
+            Vault.service = service
             let id = "askpass-selftest-\(getpid())"
             _ = Vault.set("leak-check-42", for: id)
             let process = Process()
             process.executableURL = URL(fileURLWithPath: RemoteTarget.executable)
             process.arguments = ["Password:"]
-            process.environment = ["OMNIHUB_ASKPASS_SECRET": id]
+            process.environment = ["OMNIHUB_ASKPASS_SECRET": id, "OMNIHUB_VAULT_SERVICE": service]
             let pipe = Pipe()
             process.standardOutput = pipe
             try? process.run()
             process.waitUntilExit()
             let output = String(decoding: pipe.fileHandleForReading.readDataToEndOfFile(), as: UTF8.self)
-            Vault.remove(id)
+            Vault.debugDeleteAll()
             let leaked = output.contains("leak-check-42")
             print(leaked ? "FAIL  a process that is not OmniHub's ssh got the vault password (exit \(process.terminationStatus))"
                          : "PASS  askpass refuses a caller that is not an ssh started by OmniHub (exit \(process.terminationStatus))")
@@ -792,6 +799,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
         out.append("-- dock --")
         out.append(FloatingDockPanel.debugState)
+        out.append(Vault.debugSummary)
+        if let session = FloatingDockPanel.terminalIfCreated?.activeSession {
+            out.append("terminal \(session.debugCursorState)")
+        }
         for screen in NSScreen.screens {
             out.append("screen frame=\(screen.frame) visible=\(screen.visibleFrame) main=\(screen == NSScreen.main)")
         }

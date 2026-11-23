@@ -561,6 +561,7 @@ final class TerminalSession {
     /// Test hooks: the cursor cell's background as drawn (sRGB); start a
     /// new breathing cycle; tell the cursor the focus changed.
     var debugCursorColor: NSColor? { cursor.currentColor }
+    var debugCursorState: String { cursor.debugState }
     func debugRestartCursor() { cursor.move(to: cursor.range) }
     func debugCursorFocusChanged() { cursor.focusChanged() }
 

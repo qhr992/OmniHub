@@ -9,6 +9,10 @@ import AppKit
 /// Every output (typing echoes) starts a new cycle at full brightness, so it
 /// stays solid while you type. Without the keyboard it rests as a dim block
 /// that marks the place.
+///
+/// The focus is looked at on every tick while the view is in a window,
+/// rather than only on focus notifications: when the card reopens, those
+/// can arrive before the window is key, and the cursor would stay at rest.
 final class TerminalCursor {
     static let period: TimeInterval = 1.2
     static let brightest: CGFloat = 0.85
@@ -26,6 +30,8 @@ final class TerminalCursor {
     private var applied: NSRange?
     private var cycleStart = Date()
     private var timer: Timer?
+    private var wasFocused = false
+    private var drawnAlpha: CGFloat?
 
     init(textView: NSTextView) {
         self.textView = textView
@@ -50,15 +56,23 @@ final class TerminalCursor {
         update()
     }
 
-    /// The view gained or lost the keyboard.
+    /// The view gained or lost the keyboard, or moved in or out of a window.
     func focusChanged() {
-        cycleStart = Date()
         update()
     }
 
     var isFocused: Bool {
         guard let textView, let window = textView.window else { return false }
         return Self.debugAlwaysFocused || (window.isKeyWindow && window.firstResponder === textView)
+    }
+
+    /// One line for the diagnostics.
+    var debugState: String {
+        let window = textView?.window
+        return "cursor window=\(window.map { String(describing: type(of: $0)) } ?? "nil") visible=\(window?.isVisible ?? false) focused=\(isFocused) key=\(window?.isKeyWindow ?? false) "
+            + "responder=\(window?.firstResponder.map { String(describing: type(of: $0)) } ?? "nil") "
+            + "isTextView=\(window?.firstResponder === textView) ticking=\(timer != nil) range=\(range.map { "\($0)" } ?? "nil") "
+            + "alpha=\(currentColor.map { String(format: "%.2f", $0.alphaComponent) } ?? "-")"
     }
 
     /// The cursor cell's background as drawn now, in sRGB (test hook).
@@ -69,13 +83,14 @@ final class TerminalCursor {
         return (value as? NSColor)?.usingColorSpace(.sRGB)
     }
 
+    /// Ticks while the cursor is in a window; stops when the card closes.
     private func update() {
-        let breathing = isFocused && range != nil
-        if breathing, timer == nil {
+        let shown = range != nil && textView?.window != nil
+        if shown, timer == nil {
             let timer = Timer(timeInterval: Self.tick, repeats: true) { [weak self] _ in self?.draw() }
             RunLoop.main.add(timer, forMode: .common)
             self.timer = timer
-        } else if !breathing {
+        } else if !shown {
             timer?.invalidate()
             timer = nil
         }
@@ -84,10 +99,16 @@ final class TerminalCursor {
 
     private func draw() {
         guard let textView, let manager = textView.layoutManager, let length = textView.textStorage?.length else { return }
+        let focused = isFocused
+        if focused != wasFocused {
+            wasFocused = focused
+            cycleStart = Date()                 // each time the keyboard comes back: start bright
+        }
+        let alpha = focused ? Self.alpha(elapsed: Date().timeIntervalSince(cycleStart)) : Self.resting
+        if applied != nil, applied == range, drawnAlpha == alpha { return }   // at rest: nothing to redraw
         if let applied, applied != range, applied.upperBound <= length { remove(applied, from: manager) }
         applied = nil
         guard let range, range.upperBound <= length else { return }
-        let alpha = isFocused ? Self.alpha(elapsed: Date().timeIntervalSince(cycleStart)) : Self.resting
         let colors = Self.colors(for: textView)
         manager.addTemporaryAttribute(.backgroundColor, value: colors.block.withAlphaComponent(alpha),
                                       forCharacterRange: range)
@@ -97,6 +118,7 @@ final class TerminalCursor {
             manager.removeTemporaryAttribute(.foregroundColor, forCharacterRange: range)
         }
         applied = range
+        drawnAlpha = alpha
     }
 
     private func remove(_ range: NSRange, from manager: NSLayoutManager) {
@@ -109,6 +131,7 @@ final class TerminalCursor {
               length > 0 else { return }
         remove(NSRange(location: 0, length: length), from: manager)
         applied = nil
+        drawnAlpha = nil
     }
 
     /// Block and inverted-glyph colours for the appearance the terminal is

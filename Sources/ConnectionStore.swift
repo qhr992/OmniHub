@@ -276,38 +276,165 @@ final class ConnectionStore {
     }
 }
 
-/// Vault: passwords in the login Keychain, one generic-password item each.
+/// Vault: passwords in the login Keychain, all of them in one generic-password
+/// item (a JSON map id → password), so macOS asks for access once rather than
+/// once per password. Builds signed without a developer team ID are told
+/// apart by their code, so after an update the question comes back — once,
+/// and "Always Allow" settles it for that build.
+///
+/// Older versions kept one item per password. The first time the vault is
+/// opened those are moved into the shared item (macOS asks for each one this
+/// last time) and deleted. An item whose access was refused stays where it
+/// is, and nothing is written while the shared item cannot be read, so a
+/// refused prompt never loses a password.
 enum Vault {
-    static let service = "com.local.omnihub.vault"
+    /// `OMNIHUB_VAULT_SERVICE` gives tests a Keychain service of their own.
+    static var service = ProcessInfo.processInfo.environment["OMNIHUB_VAULT_SERVICE"] ?? "com.local.omnihub.vault"
+    /// Account name of the shared item. Old per-password items use the id.
+    private static let sharedAccount = "omnihub-vault"
+    private static let label = "OmniHub Vault"
 
-    private static func query(_ id: String) -> [String: Any] {
-        [kSecClass as String: kSecClassGenericPassword,
-         kSecAttrService as String: service,
-         kSecAttrAccount as String: id]
+    private enum State {
+        case loaded([String: String])
+        case unreadable(OSStatus)
     }
+
+    /// The decoded shared item, kept for the life of the process.
+    private static var cache: [String: String]?
 
     @discardableResult
     static func set(_ secret: String, for id: String) -> Bool {
-        SecItemDelete(query(id) as CFDictionary)
-        var item = query(id)
-        item[kSecValueData as String] = Data(secret.utf8)
-        item[kSecAttrLabel as String] = "OmniHub Vault"
-        return SecItemAdd(item as CFDictionary, nil) == errSecSuccess
+        guard !id.isEmpty, case .loaded(var map) = state() else { return false }
+        map[id] = secret
+        return save(map)
     }
 
     static func secret(for id: String) -> String? {
-        guard !id.isEmpty else { return nil }
-        var request = query(id)
-        request[kSecReturnData as String] = true
-        request[kSecMatchLimit as String] = kSecMatchLimitOne
-        var result: CFTypeRef?
-        guard SecItemCopyMatching(request as CFDictionary, &result) == errSecSuccess,
-              let data = result as? Data else { return nil }
-        return String(data: data, encoding: .utf8)
+        guard !id.isEmpty, case .loaded(let map) = state() else { return nil }
+        return map[id]
     }
 
     static func remove(_ id: String) {
-        SecItemDelete(query(id) as CFDictionary)
+        guard !id.isEmpty, case .loaded(var map) = state(), map[id] != nil else { return }
+        map[id] = nil
+        save(map)
+    }
+
+    /// Test hook: forget what was read, so the next call reads the Keychain.
+    static func debugForget() { cache = nil }
+
+    /// Accounts of this service's Keychain items: attributes only, so no
+    /// password is read and macOS does not ask (tests, diagnostics).
+    static var debugAccounts: [String] {
+        let request: [String: Any] = [kSecClass as String: kSecClassGenericPassword,
+                                      kSecAttrService as String: service,
+                                      kSecReturnAttributes as String: true,
+                                      kSecMatchLimit as String: kSecMatchLimitAll]
+        var result: CFTypeRef?
+        guard SecItemCopyMatching(request as CFDictionary, &result) == errSecSuccess,
+              let items = result as? [[String: Any]] else { return [] }
+        return items.compactMap { $0[kSecAttrAccount as String] as? String }.sorted()
+    }
+
+    /// One line for the diagnostics.
+    static var debugSummary: String {
+        let accounts = debugAccounts
+        return "vault keychain items=\(accounts.count) shared=\(accounts.contains(sharedAccount)) "
+            + "older=\(accounts.filter { $0 != sharedAccount }.count)"
+    }
+
+    /// Test hook: delete every item of this service.
+    static func debugDeleteAll() {
+        let match: [String: Any] = [kSecClass as String: kSecClassGenericPassword,
+                                    kSecAttrService as String: service]
+        while SecItemDelete(match as CFDictionary) == errSecSuccess {}
+        cache = nil
+    }
+
+    // MARK: Keychain
+
+    private static func query(account: String) -> [String: Any] {
+        [kSecClass as String: kSecClassGenericPassword,
+         kSecAttrService as String: service,
+         kSecAttrAccount as String: account]
+    }
+
+    /// The shared map, with old per-password items moved into it first.
+    private static func state() -> State {
+        if let cache { return .loaded(cache) }
+        var map: [String: String] = [:]
+        var request = query(account: sharedAccount)
+        request[kSecReturnData as String] = true
+        request[kSecMatchLimit as String] = kSecMatchLimitOne
+        var result: CFTypeRef?
+        let status = SecItemCopyMatching(request as CFDictionary, &result)
+        switch status {
+        case errSecSuccess:
+            guard let data = result as? Data,
+                  let decoded = try? JSONDecoder().decode([String: String].self, from: data) else {
+                return .unreadable(errSecDecode)
+            }
+            map = decoded
+        case errSecItemNotFound:
+            break
+        default:
+            return .unreadable(status)              // refused or locked: touch nothing
+        }
+        let old = readOldItems(into: &map)
+        if !old.moved.isEmpty {
+            guard save(map) else { return .unreadable(errSecIO) }
+            old.moved.forEach { SecItemDelete(query(account: $0) as CFDictionary) }
+        }
+        // An old item that was refused is asked for again next time.
+        cache = old.refused ? nil : map
+        return .loaded(map)
+    }
+
+    /// Reads the per-password items of older versions into `map`: the
+    /// accounts that were read (only those may be deleted), and whether any
+    /// could not be read.
+    private static func readOldItems(into map: inout [String: String]) -> (moved: [String], refused: Bool) {
+        var request: [String: Any] = [kSecClass as String: kSecClassGenericPassword,
+                                      kSecAttrService as String: service,
+                                      kSecReturnAttributes as String: true,
+                                      kSecMatchLimit as String: kSecMatchLimitAll]
+        var result: CFTypeRef?
+        guard SecItemCopyMatching(request as CFDictionary, &result) == errSecSuccess,
+              let items = result as? [[String: Any]] else { return ([], false) }
+        var moved: [String] = []
+        var refused = false
+        for account in items.compactMap({ $0[kSecAttrAccount as String] as? String }) where account != sharedAccount {
+            request = query(account: account)
+            request[kSecReturnData as String] = true
+            request[kSecMatchLimit as String] = kSecMatchLimitOne
+            var data: CFTypeRef?
+            guard SecItemCopyMatching(request as CFDictionary, &data) == errSecSuccess,
+                  let bytes = data as? Data, let secret = String(data: bytes, encoding: .utf8) else {
+                refused = true
+                continue
+            }
+            if map[account] == nil { map[account] = secret }
+            moved.append(account)
+        }
+        return (moved, refused)
+    }
+
+    /// Writes the map into the shared item (updated in place; created the
+    /// first time).
+    @discardableResult
+    private static func save(_ map: [String: String]) -> Bool {
+        guard let data = try? JSONEncoder().encode(map) else { return false }
+        let match = query(account: sharedAccount)
+        var status = SecItemUpdate(match as CFDictionary, [kSecValueData as String: data] as CFDictionary)
+        if status == errSecItemNotFound {
+            var item = match
+            item[kSecValueData as String] = data
+            item[kSecAttrLabel as String] = label
+            status = SecItemAdd(item as CFDictionary, nil)
+        }
+        guard status == errSecSuccess else { return false }
+        cache = map
+        return true
     }
 }
 

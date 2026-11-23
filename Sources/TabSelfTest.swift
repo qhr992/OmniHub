@@ -220,12 +220,16 @@ enum TabSelfTest {
         cursorChecks(pane.activeSession)
 
         // ---- settings panel
+        window.makeFirstResponder(pane.activeSession?.focusView)
         pane.debugToggle("settings")
         let scope = TabOrder.topScope(in: pane)
         guard let settings = scope as? TerminalSettingsView else {
             check("terminal settings open over the page", false, "\(type(of: scope))")
             return finish()
         }
+        let opened = window.focusedControl
+        check("Terminal settings: opening them takes the keyboard from the shell (first field)",
+              opened is NSTextField && opened?.isDescendant(of: settings) == true, "at \(name(opened))")
         let titles = ["Connections", "Vault", "Proxies"]
         for (index, title) in titles.enumerated() {
             settings.select(tab: index)

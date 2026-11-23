@@ -423,8 +423,9 @@ final class TerminalPane: NSView, DockPage {
     @objc private func toggleForwards() {
         if dropdown is ForwardsView { closeDropdown(); return }
         guard let session = activeSession, session.target?.isSSH == true else { return }
-        showDropdown(ForwardsView(session: session), size: NSSize(width: 470, height: 330),
-                     under: forwardButton, alignRight: true)
+        let forwards = ForwardsView(session: session)
+        showDropdown(forwards, size: NSSize(width: 470, height: 330), under: forwardButton, alignRight: true)
+        TabOrder.focusFirstField(in: forwards)
     }
 
     @objc private func transfersChanged() {
@@ -498,6 +499,7 @@ final class TerminalPane: NSView, DockPage {
             settingsView = view
         }
         settingsView?.select(tab: tab)
+        if let settingsView { TabOrder.focusFirstField(in: settingsView) }
     }
 
     private func closeSettings() {

@@ -120,7 +120,7 @@ macOS 菜单栏工具集：截图、贴图、剪贴板历史、正在播放、�
 |---|---|
 | 剪贴板历史、事项、终端配置、暂存文件 | `~/Library/Application Support/OmniHub/` |
 | 设置 | UserDefaults 域 `com.local.omnihub` |
-| 密码 | 登录钥匙串，服务名 `com.local.omnihub.vault` |
+| 密码 | 登录钥匙串，服务名 `com.local.omnihub.vault`，所有密码存在同一个条目里（系统只询问一次，更新后再问一次） |
 
 OmniHub 只在两种情况下访问网络：获取歌词（`music.163.com`、`lrclib.net`），以及在你开启后查询公网 IP（`api.ipify.org`）。
 
