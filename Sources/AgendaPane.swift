@@ -43,7 +43,7 @@ final class CalendarSource {
         guard access == .granted else { return [] }
         let predicate = store.predicateForEvents(withStart: start, end: end, calendars: nil)
         return store.events(matching: predicate).map {
-            Entry(title: $0.title ?? "(Untitled)", start: $0.startDate, end: $0.endDate, allDay: $0.isAllDay,
+            Entry(title: $0.title ?? L("(Untitled)"), start: $0.startDate, end: $0.endDate, allDay: $0.isAllDay,
                   color: $0.calendar.color ?? .systemBlue, calendar: $0.calendar.title)
         }.sorted { $0.start < $1.start }
     }
@@ -56,17 +56,17 @@ final class AgendaPane: NSView, DockPage {
     private let grid = MonthGridView()
     private let monthLabel = NSTextField(labelWithString: "")
     private let accessLabel = NSTextField(labelWithString: "")
-    private let accessButton = NSButton(title: "Open System Settings", target: nil, action: nil)
+    private let accessButton = NSButton(title: L("Open System Settings"), target: nil, action: nil)
     private let dayLabel = NSTextField(labelWithString: "")
     private let titleField = NSTextField()
     private let noteField = NSTextField()
-    private let dateToggle = FocusButton(checkboxWithTitle: "Date", target: nil, action: nil)
+    private let dateToggle = FocusButton(checkboxWithTitle: L("Date"), target: nil, action: nil)
     private let datePicker = NSDatePicker()
-    private let addButton = FocusButton(title: "Add", target: nil, action: nil)
-    private let cancelButton = FocusButton(title: "Cancel", target: nil, action: nil)
+    private let addButton = FocusButton(title: L("Add"), target: nil, action: nil)
+    private let cancelButton = FocusButton(title: L("Cancel"), target: nil, action: nil)
     private let editRow = NSStackView()
     /// Day = the chosen day's events and to-dos; Done = finished to-dos.
-    private let modePicker = NSSegmentedControl(labels: ["Day", "Done"], trackingMode: .selectOne, target: nil, action: nil)
+    private let modePicker = NSSegmentedControl(labels: [L("Day"), L("Done")], trackingMode: .selectOne, target: nil, action: nil)
     /// The to-do being edited in the form (nil = the form adds a new one).
     private(set) var editingID: UUID?
     private var highlightedID: UUID?
@@ -156,6 +156,7 @@ final class AgendaPane: NSView, DockPage {
         monthLabel.font = .systemFont(ofSize: 14, weight: .semibold)
         monthLabel.textColor = .white
         func arrow(_ symbol: String, _ tooltip: String, _ action: Selector) -> NSButton {
+            let tooltip = L(tooltip)
             let button = NSButton(image: NSImage(systemSymbolName: symbol, accessibilityDescription: tooltip) ?? NSImage(),
                                   target: self, action: action)
             button.isBordered = false
@@ -163,7 +164,7 @@ final class AgendaPane: NSView, DockPage {
             button.contentTintColor = NSColor(white: 1, alpha: 0.8)
             return button
         }
-        let today = NSButton(title: "Today", target: self, action: #selector(goToday))
+        let today = NSButton(title: L("Today"), target: self, action: #selector(goToday))
         today.bezelStyle = .inline
         today.controlSize = .small
         let gap = NSView()
@@ -188,13 +189,14 @@ final class AgendaPane: NSView, DockPage {
         accessButton.bezelStyle = .inline
         accessButton.controlSize = .small
 
-        let legend = NSTextField(labelWithString: "● Calendar   ● To-do")
+        let legendString = L("● Calendar   ● To-do")
+        let legend = NSTextField(labelWithString: legendString)
         legend.font = .systemFont(ofSize: 10)
-        let legendText = NSMutableAttributedString(string: "● Calendar   ● To-do",
+        let legendText = NSMutableAttributedString(string: legendString,
                                                    attributes: [.foregroundColor: NSColor(white: 1, alpha: 0.55),
                                                                 .font: NSFont.systemFont(ofSize: 10)])
         legendText.addAttribute(.foregroundColor, value: MonthGridView.eventColor, range: NSRange(location: 0, length: 1))
-        legendText.addAttribute(.foregroundColor, value: MonthGridView.taskColor, range: NSRange(location: 13, length: 1))
+        legendText.addAttribute(.foregroundColor, value: MonthGridView.taskColor, range: (legendString as NSString).range(of: "●", options: .backwards))
         legend.attributedStringValue = legendText
 
         let left = NSStackView(views: [monthRow, grid, legend, accessLabel, accessButton])
@@ -210,14 +212,14 @@ final class AgendaPane: NSView, DockPage {
         dayLabel.textColor = .white
         dayLabel.translatesAutoresizingMaskIntoConstraints = false
 
-        titleField.placeholderString = "New to-do"
+        titleField.placeholderString = L("New to-do")
         titleField.font = .systemFont(ofSize: 13)
         titleField.target = self
         titleField.action = #selector(addTask)
         // Without this, tabbing to the note field fires the action and adds
         // a half-filled item.
         titleField.cell?.sendsActionOnEndEditing = false
-        noteField.placeholderString = "Note (optional)"
+        noteField.placeholderString = L("Note (optional)")
         noteField.font = .systemFont(ofSize: 12)
         noteField.target = self
         noteField.action = #selector(addTask)
@@ -333,8 +335,8 @@ final class AgendaPane: NSView, DockPage {
         let calendar = Calendar.current
         month = calendar.date(from: calendar.dateComponents([.year, .month], from: date)) ?? date
         let formatter = DateFormatter()
-        formatter.locale = Locale(identifier: "en_US")
-        formatter.dateFormat = "MMMM yyyy"
+        formatter.locale = AppLanguage.current.locale
+        formatter.dateFormat = L("MMMM yyyy")
         monthLabel.stringValue = formatter.string(from: month)
         refreshGrid()
     }
@@ -418,7 +420,7 @@ final class AgendaPane: NSView, DockPage {
         dateToggle.state = task.due == nil ? .off : .on
         datePicker.isEnabled = task.due != nil
         if let due = task.due { datePicker.dateValue = due }
-        addButton.title = "Save"
+        addButton.title = L("Save")
         cancelButton.isHidden = false
         editRow.isHidden = false
         window?.makeFirstResponder(titleField)
@@ -432,7 +434,7 @@ final class AgendaPane: NSView, DockPage {
         let withDate = Prefs.bool("task.defaultDate", true)
         dateToggle.state = withDate ? .on : .off
         datePicker.isEnabled = withDate
-        addButton.title = "Add"
+        addButton.title = L("Add")
         cancelButton.isHidden = true
         editRow.isHidden = true
     }
@@ -457,25 +459,25 @@ final class AgendaPane: NSView, DockPage {
         refreshGrid()
         let calendar = Calendar.current
         let formatter = DateFormatter()
-        formatter.locale = Locale(identifier: "en_US")
-        formatter.dateFormat = "EEE, MMM d"
+        formatter.locale = AppLanguage.current.locale
+        formatter.dateFormat = L("EEE, MMM d")
         let isToday = calendar.isDateInToday(selected)
-        dayLabel.stringValue = formatter.string(from: selected) + (isToday ? " · Today" : "")
+        dayLabel.stringValue = formatter.string(from: selected) + (isToday ? L(" · Today") : "")
 
         switch CalendarSource.shared.access {
         case .granted:
-            accessLabel.stringValue = "Calendar connected"
+            accessLabel.stringValue = L("Calendar connected")
             accessLabel.textColor = NSColor(white: 1, alpha: 0.55)
             accessButton.isHidden = true
         case .undetermined:
-            accessLabel.stringValue = "Calendar access not granted yet"
+            accessLabel.stringValue = L("Calendar access not granted yet")
             accessLabel.textColor = .systemRed
-            accessButton.title = "Allow"
+            accessButton.title = L("Allow")
             accessButton.isHidden = false
         case .denied:
-            accessLabel.stringValue = "No calendar access. System Settings → Privacy & Security → Calendars: give OmniHub full access"
+            accessLabel.stringValue = L("No calendar access. System Settings → Privacy & Security → Calendars: give OmniHub full access")
             accessLabel.textColor = .systemRed
-            accessButton.title = "Open System Settings"
+            accessButton.title = L("Open System Settings")
             accessButton.isHidden = false
         }
 
@@ -485,7 +487,7 @@ final class AgendaPane: NSView, DockPage {
         }
         debugRows = []
         func section(_ text: String) {
-            let label = NSTextField(labelWithString: text)
+            let label = NSTextField(labelWithString: L(text))
             label.font = .systemFont(ofSize: 10, weight: .semibold)
             label.textColor = NSColor(white: 1, alpha: 0.45)
             listStack.addArrangedSubview(label)
@@ -510,9 +512,9 @@ final class AgendaPane: NSView, DockPage {
         if modePicker.selectedSegment == 1 {
             // History: every finished to-do, newest first; untick to reopen.
             let done = TaskStore.shared.completed
-            dayLabel.stringValue = "Done"
+            dayLabel.stringValue = L("Done")
             if done.isEmpty {
-                let empty = NSTextField(labelWithString: "Nothing finished yet")
+                let empty = NSTextField(labelWithString: L("Nothing finished yet"))
                 empty.font = .systemFont(ofSize: 12)
                 empty.textColor = NSColor(white: 1, alpha: 0.4)
                 listStack.addArrangedSubview(empty)
@@ -521,13 +523,13 @@ final class AgendaPane: NSView, DockPage {
             for task in done {
                 let day = calendar.startOfDay(for: task.completedAt ?? task.due ?? task.createdAt)
                 if day != lastDay {
-                    section(task.completedAt == nil ? "Earlier" : formatter.string(from: day))
+                    section(task.completedAt == nil ? L("Earlier") : formatter.string(from: day))
                     lastDay = day
                 }
                 add(taskRow(task))
                 debugRows.append("done: \(task.title)")
             }
-            summaryLabel.stringValue = "\(TaskStore.shared.active.count) open · \(done.count) done"
+            summaryLabel.stringValue = L("%ld open · %ld done", TaskStore.shared.active.count, done.count)
             return
         }
 
@@ -559,12 +561,12 @@ final class AgendaPane: NSView, DockPage {
             for task in undated { add(taskRow(task)); debugRows.append("undated: \(task.title)") }
         }
         if listStack.arrangedSubviews.isEmpty {
-            let empty = NSTextField(labelWithString: "Nothing on this day")
+            let empty = NSTextField(labelWithString: L("Nothing on this day"))
             empty.font = .systemFont(ofSize: 12)
             empty.textColor = NSColor(white: 1, alpha: 0.4)
             listStack.addArrangedSubview(empty)
         }
-        summaryLabel.stringValue = "\(active.count) open · \(TaskStore.shared.completedCount) done"
+        summaryLabel.stringValue = L("%ld open · %ld done", active.count, TaskStore.shared.completedCount)
     }
 }
 
@@ -614,7 +616,7 @@ final class MonthGridView: NSView {
         let size = cell
         let paragraph = NSMutableParagraphStyle()
         paragraph.alignment = .center
-        for (index, name) in ["M", "T", "W", "T", "F", "S", "S"].enumerated() {
+        for (index, name) in AppLanguage.current.weekdayInitials.enumerated() {
             (name as NSString).draw(in: NSRect(x: CGFloat(index) * size.width, y: 3, width: size.width, height: 16),
                                     withAttributes: [.font: NSFont.systemFont(ofSize: 10, weight: .medium),
                                                      .foregroundColor: NSColor(white: 1, alpha: index >= 5 ? 0.38 : 0.5),
@@ -688,7 +690,7 @@ final class EventRowView: NSView {
         title.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
         let formatter = DateFormatter()
         formatter.dateFormat = "HH:mm"
-        let when = entry.allDay ? "All day" : "\(formatter.string(from: entry.start)) – \(formatter.string(from: entry.end))"
+        let when = entry.allDay ? L("All day") : "\(formatter.string(from: entry.start)) – \(formatter.string(from: entry.end))"
         let detail = NSTextField(labelWithString: "\(when) · \(entry.calendar)")
         detail.font = .monospacedDigitSystemFont(ofSize: 10.5, weight: .regular)
         detail.textColor = NSColor(white: 1, alpha: 0.55)
@@ -749,7 +751,7 @@ final class TaskRowView: NSView {
         checkbox.target = self
         checkbox.action = #selector(markDone)
         checkbox.state = task.done ? .on : .off
-        checkbox.toolTip = task.done ? "Reopen" : "Mark done"
+        checkbox.toolTip = task.done ? L("Reopen") : L("Mark done")
         checkbox.translatesAutoresizingMaskIntoConstraints = false
 
         let title = NSTextField(labelWithString: task.title)
@@ -796,7 +798,7 @@ final class TaskRowView: NSView {
         let stamp = task.done ? task.completedAt : task.due
         if let due = stamp {
             let formatter = DateFormatter()
-            formatter.dateFormat = task.done ? "'Done' HH:mm" : "MM-dd HH:mm"
+            formatter.dateFormat = task.done ? L("'Done' HH:mm") : "MM-dd HH:mm"
             let dueLabel = NSTextField(labelWithString: formatter.string(from: due))
             dueLabel.font = .monospacedDigitSystemFont(ofSize: 10, weight: .regular)
             dueLabel.textColor = !task.done && due < Date() ? .systemRed : .tertiaryLabelColor

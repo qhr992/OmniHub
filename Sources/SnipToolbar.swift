@@ -45,7 +45,7 @@ private enum HUD {
         button.title = ""
         button.bezelStyle = .regularSquare
         button.isBordered = false
-        button.toolTip = tooltip
+        button.toolTip = L(tooltip)
         button.widthAnchor.constraint(equalToConstant: side).isActive = true
         button.heightAnchor.constraint(equalToConstant: side).isActive = true
         return button
@@ -88,7 +88,7 @@ final class ToolbarPanel: NSPanel {
         let stack = HUD.row(insets: NSEdgeInsets(top: 6, left: 10, bottom: 6, right: 10))
 
         for tool in Self.toolbarTools {
-            let title = tool.isFrame ? "Frame" : tool.title
+            let title = tool.isFrame ? L("Frame") : tool.title
             let button = HUD.toolButton(image: NSImage(systemSymbolName: tool.symbolName, accessibilityDescription: title),
                                         tooltip: title, side: 26, target: self, action: #selector(selectTool(_:)))
             button.tag = toolButtons.count
@@ -113,6 +113,7 @@ final class ToolbarPanel: NSPanel {
     }
 
     private func makeButton(symbol: String, tooltip: String, action: Selector) -> NSButton {
+        let tooltip = L(tooltip)
         let image = NSImage(systemSymbolName: symbol, accessibilityDescription: tooltip)
         let button = NSButton(image: image ?? NSImage(), target: self, action: action)
         button.title = ""
@@ -131,7 +132,7 @@ final class ToolbarPanel: NSPanel {
         for (slot, button) in toolButtons {
             if slot.isFrame {
                 let shape = tool.flatMap { $0.isFrame ? $0 : nil } ?? session.frameShape
-                button.image = NSImage(systemSymbolName: shape.symbolName, accessibilityDescription: "Frame")
+                button.image = NSImage(systemSymbolName: shape.symbolName, accessibilityDescription: L("Frame"))
                 button.isChosen = tool?.isFrame == true
             } else {
                 button.isChosen = tool == slot
@@ -264,7 +265,7 @@ final class ToolOptionsPanel: NSPanel {
             button.tag = index
             button.target = self
             button.action = #selector(selectColor(_:))
-            button.toolTip = "Color"
+            button.toolTip = L("Color")
             // Fixed size: unconstrained, the stack squeezes the round swatches out of shape.
             button.widthAnchor.constraint(equalToConstant: 18).isActive = true
             button.heightAnchor.constraint(equalToConstant: 18).isActive = true
@@ -274,7 +275,7 @@ final class ToolOptionsPanel: NSPanel {
         for (index, size) in Mosaic.brushSizes.enumerated() {
             let names = ["Small", "Medium", "Large"]
             let button = HUD.toolButton(image: Self.dot(diameter: 5 + CGFloat(index) * 5),
-                                        tooltip: "Brush size: " + (index < names.count ? names[index] : "\(Int(size))"),
+                                        tooltip: L("Brush size: %@", index < names.count ? L(names[index]) : "\(Int(size))"),
                                         side: 24, target: self, action: #selector(selectSize(_:)))
             button.tag = index
             sizeButtons.append(button)

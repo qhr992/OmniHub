@@ -126,7 +126,7 @@ final class TransferCenter {
                                 remotePath: record.remotePath, host: record.host, total: record.total)
             // Anything still "running" in the file was cut off by a quit.
             item.state = record.state == .running ? .failed : record.state
-            item.message = record.state == .running ? "Interrupted" : record.message
+            item.message = record.state == .running ? L("Interrupted") : record.message
             item.transferred = record.state == .done ? (record.total ?? 0) : 0
             item.finished = record.finished
             items.append(item)
@@ -215,7 +215,7 @@ final class TransferCenter {
     func cancel(_ item: Transfer) {
         guard item.state == .running else { return }
         item.state = .failed
-        item.message = "Cancelled"
+        item.message = L("Cancelled")
         item.process?.terminate()
     }
 
@@ -289,10 +289,10 @@ final class TransfersView: NSView, TabScope {
 
     init() {
         super.init(frame: .zero)
-        let title = NSTextField(labelWithString: "Recent Downloads")
+        let title = NSTextField(labelWithString: L("Recent Downloads"))
         title.font = .systemFont(ofSize: 12, weight: .semibold)
         title.textColor = .white
-        let clear = NSButton(title: "Clear", target: self, action: #selector(clearFinished))
+        let clear = NSButton(title: L("Clear"), target: self, action: #selector(clearFinished))
         clear.bezelStyle = .inline
         clear.controlSize = .small
 
@@ -354,7 +354,7 @@ final class TransfersView: NSView, TabScope {
                 row.widthAnchor.constraint(equalTo: stack.widthAnchor).isActive = true
             }
             if items.isEmpty {
-                let empty = NSTextField(labelWithString: "Nothing downloaded yet. In the SFTP panel, right-click a file or folder and choose Download.")
+                let empty = NSTextField(labelWithString: L("Nothing downloaded yet. In the SFTP panel, right-click a file or folder and choose Download."))
                 empty.font = .systemFont(ofSize: 11)
                 empty.textColor = NSColor(white: 1, alpha: 0.5)
                 empty.lineBreakMode = .byWordWrapping
@@ -387,7 +387,7 @@ final class TransferRow: NSView {
 
         let icon = NSImageView()
         icon.image = NSImage(systemSymbolName: item.isUpload ? "arrow.up.circle.fill" : "arrow.down.circle.fill",
-                             accessibilityDescription: item.isUpload ? "Upload" : "Download")
+                             accessibilityDescription: item.isUpload ? L("Upload") : L("Download"))
         icon.contentTintColor = item.isUpload ? .systemOrange : .systemBlue
         let name = NSTextField(labelWithString: item.name)
         name.font = .systemFont(ofSize: 12, weight: .medium)
@@ -451,23 +451,23 @@ final class TransferRow: NSView {
             } else {
                 bar.isIndeterminate = true
                 bar.startAnimation(nil)
-                detail.stringValue = (item.isUpload ? "Uploading" : "Downloading \(Self.size(item.transferred))") + " · \(item.host)"
+                detail.stringValue = (item.isUpload ? L("Uploading") : L("Downloading %@", Self.size(item.transferred))) + " · \(item.host)"
             }
-            action.image = NSImage(systemSymbolName: "xmark.circle", accessibilityDescription: "Cancel")
-            action.toolTip = "Cancel"
+            action.image = NSImage(systemSymbolName: "xmark.circle", accessibilityDescription: L("Cancel"))
+            action.toolTip = L("Cancel")
         case .done:
             bar.isHidden = true
             let formatter = DateFormatter()
             formatter.dateFormat = "MM-dd HH:mm"
             let when = item.finished.map { formatter.string(from: $0) } ?? ""
-            detail.stringValue = (item.isUpload ? "Uploaded to \(item.remotePath)" : "Done · \(Self.size(item.total ?? item.transferred))")
+            detail.stringValue = (item.isUpload ? L("Uploaded to %@", item.remotePath) : L("Done · %@", Self.size(item.total ?? item.transferred)))
                 + " · \(item.host) · \(when)"
-            action.image = NSImage(systemSymbolName: "magnifyingglass", accessibilityDescription: "Show in Finder")
-            action.toolTip = "Show in Finder"
+            action.image = NSImage(systemSymbolName: "magnifyingglass", accessibilityDescription: L("Show in Finder"))
+            action.toolTip = L("Show in Finder")
             action.isHidden = item.isUpload
         case .failed:
             bar.isHidden = true
-            detail.stringValue = "Failed: \(item.message)"
+            detail.stringValue = L("Failed: %@", item.message)
             detail.textColor = .systemRed
             action.isHidden = true
         }
@@ -520,6 +520,7 @@ final class SFTPBrowserView: NSView, TabScope, NSTableViewDataSource, NSTableVie
     var debugEntries: [SFTP.Entry] { visible }
 
     private func button(_ symbol: String, _ tooltip: String, _ action: Selector) -> NSButton {
+        let tooltip = L(tooltip)
         let image = NSImage(systemSymbolName: symbol, accessibilityDescription: tooltip)?
             .withSymbolConfiguration(.init(pointSize: 12, weight: .medium))
         let button = NSButton(image: image ?? NSImage(), target: self, action: action)
@@ -576,8 +577,8 @@ final class SFTPBrowserView: NSView, TabScope, NSTableViewDataSource, NSTableVie
         }
         tableView.columnAutoresizingStyle = .firstColumnOnlyAutoresizingStyle
         let menu = NSMenu()
-        menu.addItem(withTitle: "Copy Path", action: #selector(copyPath), keyEquivalent: "").target = self
-        menu.addItem(withTitle: "Download", action: #selector(downloadSelection), keyEquivalent: "").target = self
+        menu.addItem(withTitle: L("Copy Path"), action: #selector(copyPath), keyEquivalent: "").target = self
+        menu.addItem(withTitle: L("Download"), action: #selector(downloadSelection), keyEquivalent: "").target = self
         tableView.menu = menu
         let scroll = NSScrollView()
         scroll.documentView = tableView
@@ -621,13 +622,13 @@ final class SFTPBrowserView: NSView, TabScope, NSTableViewDataSource, NSTableVie
         guard let remote = session.target, !loading else { return }
         loading = true
         statusLabel.textColor = NSColor(white: 1, alpha: 0.55)
-        statusLabel.stringValue = "Loading…"
+        statusLabel.stringValue = L("Loading…")
         SFTP.list(remote, path: target) { [weak self] resolved, entries, error in
             guard let self else { return }
             self.loading = false
             if let error {
                 self.statusLabel.textColor = .systemRed
-                self.statusLabel.stringValue = "Cannot open \(target): \(error)"
+                self.statusLabel.stringValue = L("Cannot open %@: %@", target, "\(error)")
                 completion?()
                 return
             }
@@ -645,8 +646,8 @@ final class SFTPBrowserView: NSView, TabScope, NSTableViewDataSource, NSTableVie
         tableView.reloadData()
         let folders = visible.filter(\.isDirectory).count
         statusLabel.textColor = NSColor(white: 1, alpha: 0.55)
-        statusLabel.stringValue = "\(folders) folders, \(visible.count - folders) files"
-            + (needle.isEmpty ? "" : " (filtered from \(entries.count))") + " · double-click to open, right-click for Copy Path / Download"
+        statusLabel.stringValue = L("%ld folders, %ld files", folders, visible.count - folders)
+            + (needle.isEmpty ? "" : L(" (filtered from %ld)", entries.count)) + L(" · double-click to open, right-click for Copy Path / Download")
     }
 
     @objc private func refresh() { load(path) }
@@ -676,7 +677,7 @@ final class SFTPBrowserView: NSView, TabScope, NSTableViewDataSource, NSTableVie
         inputField.stringValue = ""
         inputField.isHidden = mode == .none
         inputHeight.constant = mode == .none ? 0 : 22
-        inputField.placeholderString = mode == .filter ? "Filter names in this folder…" : "New folder name, Return to create"
+        inputField.placeholderString = mode == .filter ? L("Filter names in this folder…") : L("New folder name, Return to create")
         if mode != .none { window?.makeFirstResponder(inputField) }
         applyFilter()
     }
@@ -699,14 +700,14 @@ final class SFTPBrowserView: NSView, TabScope, NSTableViewDataSource, NSTableVie
         guard let remote = session.target else { return }
         guard !name.contains("/") else {
             statusLabel.textColor = .systemRed
-            statusLabel.stringValue = "A folder name cannot contain /"
+            statusLabel.stringValue = L("A folder name cannot contain /")
             return
         }
         SFTP.makeDirectory(remote, path: SFTP.join(path, name)) { [weak self] error in
             guard let self else { return }
             if let error {
                 self.statusLabel.textColor = .systemRed
-                self.statusLabel.stringValue = "Create failed: \(error)"
+                self.statusLabel.stringValue = L("Create failed: %@", "\(error)")
                 completion?()
                 return
             }
@@ -723,13 +724,13 @@ final class SFTPBrowserView: NSView, TabScope, NSTableViewDataSource, NSTableVie
         panel.canChooseFiles = true
         panel.canChooseDirectories = true
         panel.allowsMultipleSelection = true
-        panel.message = "Choose files or folders to upload to \(path)"
+        panel.message = L("Choose files or folders to upload to %@", path)
         NSApp.activate(ignoringOtherApps: true)
         guard panel.runModal() == .OK else { return }
         for url in panel.urls {
             TransferCenter.shared.upload(remote, local: url, remoteDirectory: path)
         }
-        statusLabel.stringValue = "Uploading \(panel.urls.count) item(s) — see the Downloads button"
+        statusLabel.stringValue = L("Uploading %ld item(s) — see the Downloads button", panel.urls.count)
     }
 
     /// Refreshes the listing when an upload into this folder has finished.
@@ -756,14 +757,14 @@ final class SFTPBrowserView: NSView, TabScope, NSTableViewDataSource, NSTableVie
         guard !paths.isEmpty else { return }
         NSPasteboard.general.clearContents()
         NSPasteboard.general.setString(paths.joined(separator: "\n"), forType: .string)
-        statusLabel.stringValue = "Path copied: \(paths[0])" + (paths.count > 1 ? " (+\(paths.count - 1))" : "")
+        statusLabel.stringValue = L("Path copied: %@", paths[0]) + (paths.count > 1 ? " (+\(paths.count - 1))" : "")
     }
 
     @objc private func downloadSelection() {
         let chosen = targets()
         guard !chosen.isEmpty else { return }
         chosen.forEach { download($0) }
-        statusLabel.stringValue = "Downloading \(chosen.count) item(s) to Downloads — see the Downloads button"
+        statusLabel.stringValue = L("Downloading %ld item(s) to Downloads — see the Downloads button", chosen.count)
     }
 
     @discardableResult

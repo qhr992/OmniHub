@@ -26,9 +26,9 @@ struct ServerTunnel: Equatable {
 
     var state: String {
         switch source {
-        case .process: return "Running · " + detail
-        case .listener: return "Remote forward · " + detail
-        case .config: return "Configured · " + detail
+        case .process: return L("Running · %@", detail)
+        case .listener: return L("Remote forward · %@", detail)
+        case .config: return L("Configured · %@", detail)
         }
     }
 

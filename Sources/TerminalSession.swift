@@ -12,7 +12,7 @@ final class PortForward {
     let targetPort: Int
     /// Proxy the forward's own connection goes through ("" = shares the tab's connection).
     let proxyID: String
-    var state = "Starting…"
+    var state = L("Starting…")
     var active = false
     var process: Process?
 
@@ -34,9 +34,9 @@ final class PortForward {
     var summary: String {
         let listen = "\(bind.isEmpty ? "127.0.0.1" : bind):\(listenPort)"
         switch kind {
-        case "D": return "SOCKS  local \(listen)"
-        case "R": return "server \(listen) → \(targetHost):\(targetPort) (local side)"
-        default: return "local \(listen) → \(targetHost):\(targetPort) (server side)"
+        case "D": return L("SOCKS  local %@", listen)
+        case "R": return L("server %@ → %@:%@ (local side)", listen, targetHost, String(targetPort))
+        default: return L("local %@ → %@:%@ (server side)", listen, targetHost, String(targetPort))
         }
     }
 }
@@ -358,7 +358,7 @@ final class TerminalSession {
 
     /// A line from OmniHub itself, shown in the terminal.
     private func notice(_ text: String) {
-        buffer.feed(Array("\r\n[OmniHub] \(text)\r\n".utf8))
+        buffer.feed(Array("\r\n[OmniHub] \(L(text))\r\n".utf8))
         render()
     }
 
@@ -463,13 +463,13 @@ final class TerminalSession {
             // Rides on the tab's own connection.
             Subprocess.run(target.muxArguments(["-O", "forward"] + forward.spec + [target.host])) { [weak self] result in
                 forward.active = result.ok
-                forward.state = result.ok ? "Active" : "Failed: \(result.message)"
+                forward.state = result.ok ? L("Active") : L("Failed: %@", result.message)
                 self?.onForwardsChange?()
             }
             return
         }
         guard let (arguments, environment) = target.standaloneForwardArguments(spec: forward.spec, proxyID: proxyID) else {
-            forward.state = "Failed: forwarding through a proxy needs a saved connection"
+            forward.state = L("Failed: forwarding through a proxy needs a saved connection")
             onForwardsChange?()
             return
         }
@@ -477,7 +477,7 @@ final class TerminalSession {
             forward.process = nil
             forward.active = false
             if self?.forwards.contains(where: { $0 === forward }) == true {
-                forward.state = "Stopped: \(result.message)"
+                forward.state = L("Stopped: %@", result.message)
                 self?.onForwardsChange?()
             }
         }
@@ -485,7 +485,7 @@ final class TerminalSession {
         DispatchQueue.main.asyncAfter(deadline: .now() + 2.5) { [weak self] in
             guard forward.process?.isRunning == true else { return }
             forward.active = true
-            forward.state = "Active (via proxy)"
+            forward.state = L("Active (via proxy)")
             self?.onForwardsChange?()
         }
     }

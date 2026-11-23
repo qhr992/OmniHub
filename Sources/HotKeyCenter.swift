@@ -50,7 +50,7 @@ struct KeyCombo: Equatable {
         kVK_ANSI_Grave: "`", kVK_ANSI_Minus: "-", kVK_ANSI_Equal: "=", kVK_ANSI_LeftBracket: "[",
         kVK_ANSI_RightBracket: "]", kVK_ANSI_Backslash: "\\", kVK_ANSI_Semicolon: ";",
         kVK_ANSI_Quote: "'", kVK_ANSI_Comma: ",", kVK_ANSI_Period: ".", kVK_ANSI_Slash: "/",
-        kVK_Space: "Space", kVK_Return: "↩", kVK_Tab: "⇥", kVK_Delete: "⌫", kVK_Escape: "⎋",
+        kVK_Space: L("Space"), kVK_Return: "↩", kVK_Tab: "⇥", kVK_Delete: "⌫", kVK_Escape: "⎋",
         kVK_LeftArrow: "←", kVK_RightArrow: "→", kVK_UpArrow: "↑", kVK_DownArrow: "↓",
         kVK_F1: "F1", kVK_F2: "F2", kVK_F3: "F3", kVK_F4: "F4", kVK_F5: "F5", kVK_F6: "F6",
         kVK_F7: "F7", kVK_F8: "F8", kVK_F9: "F9", kVK_F10: "F10", kVK_F11: "F11", kVK_F12: "F12"
@@ -72,15 +72,15 @@ enum HotKeyAction: String, CaseIterable {
 
     var title: String {
         switch self {
-        case .snip: return "Screenshot"
-        case .longSnip: return "Scrolling Screenshot"
-        case .pinClipboard: return "Pin Clipboard Image"
-        case .clipboard: return "Clipboard"
-        case .terminal: return "Terminal"
-        case .tasks: return "Agenda"
-        case .dock: return "Show / Hide Dock"
-        case .playPause: return "Play / Pause"
-        case .activity: return "Activity"
+        case .snip: return L("Screenshot")
+        case .longSnip: return L("Scrolling Screenshot")
+        case .pinClipboard: return L("Pin Clipboard Image")
+        case .clipboard: return L("Clipboard")
+        case .terminal: return L("Terminal")
+        case .tasks: return L("Agenda")
+        case .dock: return L("Show / Hide Dock")
+        case .playPause: return L("Play / Pause")
+        case .activity: return L("Activity")
         }
     }
 
@@ -226,7 +226,7 @@ final class ShortcutRecorder: FocusButton {
     @objc func refresh() {
         guard !recording else { return }
         let text = HotKeyCenter.shared.display(for: hotKeyAction)
-        title = text.isEmpty ? "Click to record" : text
+        title = text.isEmpty ? L("Click to record") : text
     }
 
     private var monitor: Any?
@@ -238,7 +238,7 @@ final class ShortcutRecorder: FocusButton {
     @objc private func beginRecording() {
         guard !recording else { return }
         recording = true
-        title = "Press shortcut…"
+        title = L("Press shortcut…")
         HotKeyCenter.shared.suspend()
         NSApp.activate(ignoringOtherApps: true)
         window?.makeKey()
@@ -292,13 +292,13 @@ final class ShortcutRecorder: FocusButton {
         let strong = mods & UInt32(cmdKey | controlKey | optionKey) != 0
         guard strong || KeyCombo.isFunctionKey(keyCode) else {
             NSSound.beep()
-            title = "Needs ⌘ / ⌃ / ⌥"
+            title = L("Needs ⌘ / ⌃ / ⌥")
             return
         }
         let combo = KeyCombo(keyCode: keyCode, modifiers: mods)
         if let owner = HotKeyCenter.shared.owner(of: combo, excluding: hotKeyAction) {
             NSSound.beep()
-            title = "Used by “\(owner.title)”"
+            title = L("Used by “%@”", owner.title)
             return
         }
         recording = false

@@ -38,7 +38,7 @@ final class StatusRunner {
             value = stats.memoryTotal > 0 ? Double(stats.memoryUsed) / Double(stats.memoryTotal) : 0
         }
         load = min(max(value, 0), 1)
-        button?.toolTip = "OmniHub · \(metric == 1 ? "CPU" : "Memory") \(Int((load * 100).rounded()))%"
+        button?.toolTip = "OmniHub · \(metric == 1 ? "CPU" : L("Memory")) \(Int((load * 100).rounded()))%"
         // 0% → a lazy glide (0.22 s per frame), 100% → frantic (0.035 s).
         let next = animated ? 0.22 - (0.22 - 0.035) * load : 0
         if abs(next - interval) > 0.012 || (next == 0) != (interval == 0) {

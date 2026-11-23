@@ -302,8 +302,8 @@ final class ScrollCaptureController {
         if let png = NSBitmapImageRep(cgImage: image).representation(using: .png, properties: [:]) {
             pasteboard.setData(png, forType: .png)
         }
-        var message = "Scrolling screenshot copied (\(Int(size.width)) × \(Int(size.height)))"
-        if gaps > 0 { message += " · \(gaps) fast scroll(s), content may be missing" }
+        var message = L("Scrolling screenshot copied (%ld × %ld)", Int(size.width), Int(size.height))
+        if gaps > 0 { message += L(" · %ld fast scroll(s), content may be missing", gaps) }
         Toast.show(message, duration: gaps > 0 ? 3.5 : 2.0)
     }
 }
@@ -378,7 +378,7 @@ final class ScrollHUD: NSPanel {
         label.stringValue = baseText
         label.translatesAutoresizingMaskIntoConstraints = false
 
-        let done = NSButton(title: "Done", target: self, action: #selector(finishTapped))
+        let done = NSButton(title: L("Done"), target: self, action: #selector(finishTapped))
         done.bezelStyle = .rounded
         done.controlSize = .small
         done.translatesAutoresizingMaskIntoConstraints = false
@@ -395,7 +395,7 @@ final class ScrollHUD: NSPanel {
         contentView = effect
     }
 
-    private let baseText = "Scrolling screenshot: scroll down or hold ↓"
+    private let baseText = L("Scrolling screenshot: scroll down or hold ↓")
 
     @objc private func finishTapped() { onFinish() }
 
@@ -420,6 +420,6 @@ final class ScrollHUD: NSPanel {
     }
 
     func update(pixels: Int) {
-        label.stringValue = "\(baseText) · \(pixels) px · Esc to finish"
+        label.stringValue = L("%@ · %ld px · Esc to finish", baseText, pixels)
     }
 }

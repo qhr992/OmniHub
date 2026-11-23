@@ -9,7 +9,7 @@ extension Notification.Name {
 /// A proxy a connection (or a port forward) can go through.
 struct ProxyConfig: Codable, Equatable {
     var id = UUID().uuidString
-    var name = "New Proxy"
+    var name = L("New Proxy")
     /// "http", "https" (TLS to the proxy) or "socks5".
     var kind = "socks5"
     var host = ""
@@ -86,7 +86,7 @@ struct AutoStep: Codable, Equatable {
 
 struct ConnectionProfile: Codable, Equatable {
     var id = UUID().uuidString
-    var name = "New Connection"
+    var name = L("New Connection")
     var group = ""
     /// "ssh" or "telnet".
     var kind = "ssh"
@@ -129,7 +129,7 @@ extension ConnectionProfile {
 
 struct VaultEntry: Codable, Equatable {
     var id = UUID().uuidString
-    var name = "New Password"
+    var name = L("New Password")
     /// Username (optional; shown as "Username" in the Vault form).
     var account = ""
 }
@@ -203,7 +203,7 @@ final class ConnectionStore {
         guard let original = profile(id) else { return nil }
         var copy = original
         copy.id = UUID().uuidString
-        copy.name += " copy"
+        copy.name += L(" copy")
         // A password typed for the original goes with the copy.
         if original.secretID == original.ownSecretID {
             copy.secretID = ""

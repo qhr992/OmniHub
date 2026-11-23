@@ -13,6 +13,8 @@ mkdir -p "$APP/Contents/MacOS" "$APP/Contents/Resources"
 
 SOURCES=(
   Sources/main.swift
+  Sources/Localization.swift
+  Sources/L10nSelfTest.swift
   Sources/Support.swift
   Sources/HotKey.swift
   Sources/HotKeyCenter.swift
@@ -81,6 +83,8 @@ lipo -create -output "$APP/Contents/MacOS/OmniHub" \
   build/OmniHub-arm64 build/OmniHub-x86_64
 
 cp Resources/Info.plist "$APP/Contents/Info.plist"
+# Interface translations (English is the development language, in the code).
+cp -R Resources/zh-Hans.lproj "$APP/Contents/Resources/"
 
 # Character media (Lan: boot film, avatar, backdrop, icon) is original art
 # made in Tools/boot-film (make-assets.sh) and committed in Resources/character.

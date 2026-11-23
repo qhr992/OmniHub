@@ -11,7 +11,7 @@ final class PrefCheckbox: FocusButton {
         self.onChange = onChange
         super.init(frame: .zero)
         setButtonType(.switch)
-        self.title = title
+        self.title = L(title)
         state = Prefs.bool(key, fallback) ? .on : .off
         target = self
         action = #selector(toggled)
@@ -36,7 +36,7 @@ final class PrefPopup: FocusPopUp {
         self.key = key
         self.values = values
         super.init(frame: .zero, pullsDown: false)
-        addItems(withTitles: values.map { "\($0) \(suffix)" })
+        addItems(withTitles: values.map { L("%ld " + suffix, $0) })
         selectItem(at: values.firstIndex(of: Prefs.int(key, fallback)) ?? 0)
         target = self
         action = #selector(changed)
@@ -61,7 +61,7 @@ final class PrefChoice: FocusPopUp {
         self.key = key
         self.values = options.map(\.0)
         super.init(frame: .zero, pullsDown: false)
-        addItems(withTitles: options.map(\.1))
+        addItems(withTitles: options.map { L($0.1) })
         selectItem(at: values.firstIndex(of: Prefs.int(key, fallback)) ?? 0)
         target = self
         action = #selector(changed)
@@ -117,13 +117,16 @@ final class PrefSlider: NSStackView {
 final class SettingsPane: NSView, DockPage {
     private let tabs = NSTabView()
     private let tabPicker = FocusSegments()
-    private let loginCheckbox = FocusButton(checkboxWithTitle: "Open at login", target: nil, action: nil)
+    private let loginCheckbox = FocusButton(checkboxWithTitle: L("Open at login"), target: nil, action: nil)
+    private let languagePopup = FocusPopUp(frame: .zero, pullsDown: false)
+    private let restartNote = NSTextField(labelWithString: L("Takes effect after OmniHub restarts."))
+    private lazy var restartButton = button("Restart Now", #selector(restartNow))
     private let screenStatus = NSTextField(labelWithString: "")
     private let accessStatus = NSTextField(labelWithString: "")
     private let calendarStatus = NSTextField(labelWithString: "")
     private let completedLabel = NSTextField(labelWithString: "")
     private let historyLabel = NSTextField(labelWithString: "")
-    private let dockVisible = FocusButton(checkboxWithTitle: "Show dock", target: nil, action: nil)
+    private let dockVisible = FocusButton(checkboxWithTitle: L("Show dock"), target: nil, action: nil)
     private var statusTimer: Timer?
 
     init() {
@@ -220,13 +223,13 @@ final class SettingsPane: NSView, DockPage {
     }
 
     private func label(_ text: String) -> NSTextField {
-        let field = NSTextField(labelWithString: text)
+        let field = NSTextField(labelWithString: L(text))
         field.font = .systemFont(ofSize: 13)
         return field
     }
 
     private func hint(_ text: String) -> NSTextField {
-        let field = NSTextField(wrappingLabelWithString: text)
+        let field = NSTextField(wrappingLabelWithString: L(text))
         field.font = .systemFont(ofSize: 11)
         field.textColor = .secondaryLabelColor
         field.preferredMaxLayoutWidth = 520
@@ -234,21 +237,21 @@ final class SettingsPane: NSView, DockPage {
     }
 
     private func heading(_ text: String) -> NSTextField {
-        let field = NSTextField(labelWithString: text)
+        let field = NSTextField(labelWithString: L(text))
         field.font = .systemFont(ofSize: 12, weight: .semibold)
         field.textColor = .secondaryLabelColor
         return field
     }
 
     private func button(_ title: String, _ action: Selector) -> NSButton {
-        let button = FocusButton(title: title, target: self, action: action)
+        let button = FocusButton(title: L(title), target: self, action: action)
         button.bezelStyle = .rounded
         return button
     }
 
     private func addTab(_ title: String, _ views: [NSView]) {
         let item = NSTabViewItem(identifier: title)
-        item.label = title
+        item.label = L(title)
         item.view = page(views)
         tabs.addTabViewItem(item)
     }
@@ -259,7 +262,16 @@ final class SettingsPane: NSView, DockPage {
         // General
         loginCheckbox.target = self
         loginCheckbox.action = #selector(toggleLogin)
+        languagePopup.addItems(withTitles: AppLanguage.allCases.map(\.displayName))
+        languagePopup.selectItem(at: AppLanguage.allCases.firstIndex(of: AppLanguage.chosen) ?? 0)
+        languagePopup.target = self
+        languagePopup.action = #selector(languagePicked)
+        restartNote.font = .systemFont(ofSize: 11)
+        restartNote.textColor = .secondaryLabelColor
+        updateLanguageNote()
         addTab("General", [
+            heading("Language"),
+            row(languagePopup, restartNote, restartButton),
             heading("Startup"),
             loginCheckbox,
             row(PrefCheckbox("Startup animation", key: "boot.enabled", fallback: true),
@@ -283,7 +295,7 @@ final class SettingsPane: NSView, DockPage {
             let name = label(action.title)
             name.translatesAutoresizingMaskIntoConstraints = false
             name.widthAnchor.constraint(equalToConstant: 190).isActive = true
-            let clear = FocusButton(title: "Clear", target: self, action: #selector(clearHotKey(_:)))
+            let clear = FocusButton(title: L("Clear"), target: self, action: #selector(clearHotKey(_:)))
             clear.bezelStyle = .rounded
             clear.controlSize = .small
             clear.tag = HotKeyAction.allCases.firstIndex(of: action) ?? 0
@@ -295,7 +307,7 @@ final class SettingsPane: NSView, DockPage {
         let hotkeys = page(hotkeyRows)
         (hotkeys.subviews.first as? NSStackView)?.spacing = 6
         let hotkeyItem = NSTabViewItem(identifier: "Shortcuts")
-        hotkeyItem.label = "Shortcuts"
+        hotkeyItem.label = L("Shortcuts")
         hotkeyItem.view = hotkeys
         tabs.addTabViewItem(hotkeyItem)
 
@@ -321,8 +333,7 @@ final class SettingsPane: NSView, DockPage {
             row(label("Keep files for"), PrefPopup(key: "shelf.days", fallback: 7,
                                                  values: ShelfStore.retentionChoices, suffix: "days")),
             PrefCheckbox("Keep Shelf in front after a drop", key: FloatingDockPanel.shelfKeepOpenKey, fallback: true),
-            hint("Drop files on the dock ball to keep a copy on the Shelf. Older ones are deleted automatically. "
-                 + "Off: the Shelf folds away when the pointer leaves, like a hover-opened card.")
+            hint("Drop files on the dock ball to keep a copy on the Shelf. Older ones are deleted automatically. Off: the Shelf folds away when the pointer leaves, like a hover-opened card.")
         ])
 
         // Agenda
@@ -349,7 +360,8 @@ final class SettingsPane: NSView, DockPage {
             heading("Card"),
             row(label("Card width"), PrefSlider(key: "dock.cardWidth", fallback: FloatingDockPanel.defaultCardWidth,
                                                 range: 480...1100, width: 220, continuous: false)),
-            hint("Every page has this width (beside the dock, Home and Activity keep their narrow column). Default \(FloatingDockPanel.defaultCardWidth) = Home above or below the dock."),
+            hint(L("Every page has this width (beside the dock, Home and Activity keep their narrow column). Default %ld = Home above or below the dock.",
+                   Int(FloatingDockPanel.defaultCardWidth))),
             row(label("Entry icons"),
                 PrefCheckbox("Activity", key: "nav.show.activity", fallback: true),
                 PrefCheckbox("Agenda", key: "nav.show.tasks", fallback: true),
@@ -391,7 +403,7 @@ final class SettingsPane: NSView, DockPage {
         let terminal = page(terminalRows)
         (terminal.subviews.first as? NSStackView)?.spacing = 7
         let terminalItem = NSTabViewItem(identifier: "Terminal")
-        terminalItem.label = "Terminal"
+        terminalItem.label = L("Terminal")
         terminalItem.view = terminal
         tabs.addTabViewItem(terminalItem)
 
@@ -436,20 +448,21 @@ final class SettingsPane: NSView, DockPage {
 
     @objc private func refreshStatus() {
         SystemStats.shared.restartIfRunning()
-        screenStatus.stringValue = "Screen Recording: " + (ScreenCapture.isTrusted() ? "granted ✓" : "not granted")
+        screenStatus.stringValue = ScreenCapture.isTrusted() ? L("Screen Recording: granted ✓") : L("Screen Recording: not granted")
         screenStatus.textColor = ScreenCapture.isTrusted() ? .labelColor : .systemRed
-        accessStatus.stringValue = "Accessibility: " + (AXIsProcessTrusted() ? "granted ✓" : "not granted")
+        accessStatus.stringValue = AXIsProcessTrusted() ? L("Accessibility: granted ✓") : L("Accessibility: not granted")
         accessStatus.textColor = AXIsProcessTrusted() ? .labelColor : .systemRed
         let calendarOK = CalendarSource.shared.access == .granted
-        calendarStatus.stringValue = "Calendar: " + (calendarOK ? "granted ✓" : "not granted")
+        calendarStatus.stringValue = calendarOK ? L("Calendar: granted ✓") : L("Calendar: not granted")
         calendarStatus.textColor = calendarOK ? .labelColor : .systemRed
         if #available(macOS 13.0, *) {
             loginCheckbox.state = SMAppService.mainApp.status == .enabled ? .on : .off
         } else {
             loginCheckbox.isEnabled = false
         }
-        completedLabel.stringValue = "\(TaskStore.shared.completedCount) done, \(TaskStore.shared.active.count) open"
-        historyLabel.stringValue = "\(ClipboardStore.shared.recentItems.count) in history, \(ClipboardStore.shared.pinnedItems.count) starred"
+        completedLabel.stringValue = L("%ld done, %ld open", TaskStore.shared.completedCount, TaskStore.shared.active.count)
+        historyLabel.stringValue = L("%ld in history, %ld starred",
+                                     ClipboardStore.shared.recentItems.count, ClipboardStore.shared.pinnedItems.count)
         dockVisible.state = Prefs.bool("dock.hidden") ? .off : .on
     }
 
@@ -464,9 +477,39 @@ final class SettingsPane: NSView, DockPage {
                 try SMAppService.mainApp.unregister()
             }
         } catch {
-            Toast.show("Open at login failed: \(error.localizedDescription)", duration: 2.5)
+            Toast.show(L("Open at login failed: %@", error.localizedDescription), duration: 2.5)
         }
         refreshStatus()
+    }
+
+    @objc private func languagePicked() {
+        let index = languagePopup.indexOfSelectedItem
+        guard AppLanguage.allCases.indices.contains(index) else { return }
+        Prefs.set(AppLanguage.prefKey, AppLanguage.allCases[index].rawValue)
+        updateLanguageNote()
+    }
+
+    /// The note and the restart button show while the language picked
+    /// differs from the one on screen.
+    private func updateLanguageNote() {
+        let pending = AppLanguage.chosen != AppLanguage.current
+        restartNote.isHidden = !pending
+        restartButton.isHidden = !pending
+    }
+
+    /// Restarting closes the terminal's shells and ssh sessions, so ask
+    /// first while any are open.
+    @objc private func restartNow() {
+        if let terminal = FloatingDockPanel.terminalIfCreated, terminal.openSessionCount > 0 {
+            let alert = NSAlert()
+            alert.messageText = L("Restart OmniHub?")
+            alert.informativeText = L("Open terminal tabs will be closed.")
+            alert.addButton(withTitle: L("Restart"))
+            alert.addButton(withTitle: L("Cancel"))
+            NSApp.activate(ignoringOtherApps: true)
+            guard alert.runModal() == .alertFirstButtonReturn else { return }
+        }
+        AppRelaunch.now()
     }
 
     @objc private func previewBoot() { BootAnimation.playIfEnabled(force: true) }

@@ -190,7 +190,7 @@ final class PinnedImageWindow: NSPanel, EscDismissable {
     fileprivate func contextMenu() -> NSMenu {
         let menu = NSMenu()
         func add(_ title: String, _ action: Selector) {
-            menu.addItem(withTitle: title, action: action, keyEquivalent: "").target = self
+            menu.addItem(withTitle: L(title), action: action, keyEquivalent: "").target = self
         }
         add("Copy Image", #selector(copyImage))
         add("Copy Text", #selector(copyText))
@@ -253,6 +253,7 @@ private final class PinnedImageView: NSImageView {
     /// over the image.
     func installControls() {
         func button(_ symbol: String, _ tooltip: String, _ action: Selector) -> NSButton {
+            let tooltip = L(tooltip)
             let button = NSButton(image: NSImage(systemSymbolName: symbol, accessibilityDescription: tooltip) ?? NSImage(),
                                   target: self, action: action)
             button.isBordered = false

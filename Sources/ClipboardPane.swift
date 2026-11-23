@@ -25,7 +25,7 @@ extension DockPage {
 /// Return) copies the entry and closes the card — nothing is pasted for you.
 final class ClipboardPane: NSView, DockPage {
     private let searchField = NSSearchField()
-    private let segmented = NSSegmentedControl(labels: ["All", "Starred"],
+    private let segmented = NSSegmentedControl(labels: [L("All"), L("Starred")],
                                                trackingMode: .selectOne,
                                                target: nil,
                                                action: nil)
@@ -122,7 +122,7 @@ final class ClipboardPane: NSView, DockPage {
         segmented.action = #selector(switchTab)
         segmented.translatesAutoresizingMaskIntoConstraints = false
 
-        searchField.placeholderString = "Search clipboard history…"
+        searchField.placeholderString = L("Search clipboard history…")
         searchField.font = .systemFont(ofSize: 13)
         searchField.delegate = self
         searchField.translatesAutoresizingMaskIntoConstraints = false
@@ -307,9 +307,9 @@ final class ClipCellView: NSTableCellView {
             button.widthAnchor.constraint(equalToConstant: 24).isActive = true
             button.heightAnchor.constraint(equalToConstant: 24).isActive = true
         }
-        deleteButton.image = NSImage(systemSymbolName: "trash", accessibilityDescription: "Delete")
+        deleteButton.image = NSImage(systemSymbolName: "trash", accessibilityDescription: L("Delete"))
         deleteButton.contentTintColor = .secondaryLabelColor
-        deleteButton.toolTip = "Delete"
+        deleteButton.toolTip = L("Delete")
 
         for view in [thumb, primary, secondary, starButton, deleteButton] { addSubview(view) }
 
@@ -342,16 +342,16 @@ final class ClipCellView: NSTableCellView {
     func configure(with item: ClipItem) {
         if let image = item.image {
             thumb.image = image
-            primary.stringValue = "Image \(Int(image.size.width)) × \(Int(image.size.height))"
+            primary.stringValue = L("Image %ld × %ld", Int(image.size.width), Int(image.size.height))
         } else {
             thumb.image = NSImage(systemSymbolName: "text.alignleft", accessibilityDescription: nil)
             primary.stringValue = (item.text ?? "").replacingOccurrences(of: "\n", with: " ⏎ ")
         }
         // Filled yellow star = favourite (click to remove); outline = not yet.
         starButton.image = NSImage(systemSymbolName: item.pinned ? "star.fill" : "star",
-                                   accessibilityDescription: item.pinned ? "Unstar" : "Starred")
+                                   accessibilityDescription: item.pinned ? L("Unstar") : L("Starred"))
         starButton.contentTintColor = item.pinned ? .systemYellow : .secondaryLabelColor
-        starButton.toolTip = item.pinned ? "Unstar" : "Starred"
+        starButton.toolTip = item.pinned ? L("Unstar") : L("Starred")
         let formatter = DateFormatter()
         formatter.dateFormat = Calendar.current.isDateInToday(item.date) ? "HH:mm:ss" : "MM-dd HH:mm"
         secondary.stringValue = formatter.string(from: item.date)

@@ -24,8 +24,8 @@ struct ClipItem: Identifiable {
 
     var preview: String {
         if let text { return text }
-        if let image { return "Image \(Int(image.size.width))×\(Int(image.size.height))" }
-        return "Unknown"
+        if let image { return L("Image %ld×%ld", Int(image.size.width), Int(image.size.height)) }
+        return L("Unknown")
     }
 }
 

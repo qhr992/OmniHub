@@ -3,7 +3,7 @@ import AppKit
 /// Small builders shared by the terminal's drop-downs and settings.
 enum FormKit {
     static func label(_ text: String, size: CGFloat = 11.5, alpha: CGFloat = 0.7) -> NSTextField {
-        let field = NSTextField(labelWithString: text)
+        let field = NSTextField(labelWithString: L(text))
         field.font = .systemFont(ofSize: size)
         field.textColor = NSColor(white: 1, alpha: alpha)
         return field
@@ -11,7 +11,7 @@ enum FormKit {
 
     static func field(_ placeholder: String, width: CGFloat? = nil) -> NSTextField {
         let field = NSTextField()
-        field.placeholderString = placeholder
+        field.placeholderString = L(placeholder)
         field.font = .systemFont(ofSize: 12)
         field.controlSize = .small
         field.translatesAutoresizingMaskIntoConstraints = false
@@ -37,7 +37,7 @@ enum FormKit {
     }
 
     static func button(_ title: String, _ target: AnyObject, _ action: Selector) -> NSButton {
-        let button = FocusButton(title: title, target: target, action: action)
+        let button = FocusButton(title: L(title), target: target, action: action)
         button.bezelStyle = .rounded
         button.controlSize = .small
         return button
@@ -46,7 +46,7 @@ enum FormKit {
     /// Fills a pop-up with "none" plus the named items; selects `current`.
     static func fill(_ popup: NSPopUpButton, none: String, items: [(id: String, name: String)], current: String) {
         popup.removeAllItems()
-        popup.addItem(withTitle: none)
+        popup.addItem(withTitle: L(none))
         popup.lastItem?.representedObject = ""
         for item in items {
             popup.addItem(withTitle: item.name)
@@ -91,14 +91,14 @@ final class ForwardsView: NSView, TabScope {
     init(session: TerminalSession) {
         self.session = session
         super.init(frame: .zero)
-        let title = FormKit.label("Port Forwarding · \(session.target?.display ?? "")", size: 12, alpha: 1)
+        let title = FormKit.label(L("Port Forwarding · %@", session.target?.display ?? ""), size: 12, alpha: 1)
         title.font = .systemFont(ofSize: 12, weight: .semibold)
         title.lineBreakMode = .byTruncatingMiddle
-        let refresh = NSButton(image: NSImage(systemSymbolName: "arrow.clockwise", accessibilityDescription: "Refresh")?
+        let refresh = NSButton(image: NSImage(systemSymbolName: "arrow.clockwise", accessibilityDescription: L("Refresh"))?
                                 .withSymbolConfiguration(.init(pointSize: 11, weight: .medium)) ?? NSImage(),
                                target: self, action: #selector(loadServerTunnels))
         refresh.isBordered = false
-        refresh.toolTip = "Look up the forwards on the server again"
+        refresh.toolTip = L("Look up the forwards on the server again")
         refresh.contentTintColor = NSColor(white: 1, alpha: 0.75)
 
         list.orientation = .vertical
@@ -113,7 +113,7 @@ final class ForwardsView: NSView, TabScope {
         scroll.hasVerticalScroller = true
         scroll.drawsBackground = false
 
-        kind.addItems(withTitles: ["Local (-L)", "Remote (-R)", "Dynamic SOCKS (-D)"])
+        kind.addItems(withTitles: [L("Local (-L)"), L("Remote (-R)"), L("Dynamic SOCKS (-D)")])
         kind.target = self
         kind.action = #selector(kindChanged)
         targetHost.stringValue = "127.0.0.1"
@@ -171,7 +171,7 @@ final class ForwardsView: NSView, TabScope {
         guard let target = session.target, target.isSSH else { return }
         loadStamp += 1
         let mine = loadStamp
-        serverStatus = "Looking up the server…"
+        serverStatus = L("Looking up the server…")
         reload()
         ServerTunnels.load(target) { [weak self] result in
             guard let self, self.loadStamp == mine else { return }
@@ -181,10 +181,10 @@ final class ForwardsView: NSView, TabScope {
                 // listeners there; they are already listed above.
                 let mine = Set(self.session.forwards.filter { $0.kind == "R" }.map(\.listenPort))
                 self.serverTunnels = tunnels.filter { !($0.source == .listener && $0.listenPort.map(mine.contains) == true) }
-                self.serverStatus = self.serverTunnels.isEmpty ? "No forwards found on the server." : ""
+                self.serverStatus = self.serverTunnels.isEmpty ? L("No forwards found on the server.") : ""
             case .failure(let error):
                 self.serverTunnels = []
-                self.serverStatus = "Could not look up the server: \(error.localizedDescription)"
+                self.serverStatus = L("Could not look up the server: %@", error.localizedDescription)
             }
             self.reload()
         }
@@ -215,7 +215,7 @@ final class ForwardsView: NSView, TabScope {
     }
 
     private func appendServerRows() {
-        section("ON THE SERVER")
+        section(L("ON THE SERVER"))
         if !serverStatus.isEmpty {
             let note = FormKit.label(serverStatus, size: 11.5, alpha: 0.5)
             note.lineBreakMode = .byTruncatingTail
@@ -248,14 +248,14 @@ final class ForwardsView: NSView, TabScope {
         targetHost.isHidden = dynamic
         targetPort.isHidden = dynamic
         arrow.isHidden = dynamic
-        listenPort.placeholderString = kindCode == "R" ? "Server port" : "Local port"
+        listenPort.placeholderString = kindCode == "R" ? L("Server port") : L("Local port")
         switch kindCode {
-        case "L": hint.stringValue = "This local port reaches target host:port as seen from the server (127.0.0.1 = the server itself)."
-        case "R": hint.stringValue = "This port on the server reaches target host:port as seen from this Mac."
-        default: hint.stringValue = "Opens a local SOCKS5 port; traffic leaves from the server."
+        case "L": hint.stringValue = L("This local port reaches target host:port as seen from the server (127.0.0.1 = the server itself).")
+        case "R": hint.stringValue = L("This port on the server reaches target host:port as seen from this Mac.")
+        default: hint.stringValue = L("Opens a local SOCKS5 port; traffic leaves from the server.")
         }
         if FormKit.selectedID(proxy) != "" {
-            hint.stringValue += " With a proxy, the forward gets its own connection through it (credentials: Terminal Settings → Proxies)."
+            hint.stringValue += L(" With a proxy, the forward gets its own connection through it (credentials: Terminal Settings → Proxies).")
         }
     }
 
@@ -264,7 +264,7 @@ final class ForwardsView: NSView, TabScope {
             list.removeArrangedSubview(view)
             view.removeFromSuperview()
         }
-        section("THIS CONNECTION")
+        section(L("THIS CONNECTION"))
         if session.forwards.isEmpty {
             list.addArrangedSubview(FormKit.label("No forwards on this connection.", size: 11.5, alpha: 0.5))
         }
@@ -273,7 +273,7 @@ final class ForwardsView: NSView, TabScope {
             dot.wantsLayer = true
             dot.layer?.cornerRadius = 3.5
             dot.layer?.backgroundColor = (forward.active ? NSColor.systemGreen
-                                          : (forward.state.hasPrefix("Starting") ? NSColor.systemYellow : NSColor.systemRed)).cgColor
+                                          : (forward.state == L("Starting…") ? NSColor.systemYellow : NSColor.systemRed)).cgColor
             dot.translatesAutoresizingMaskIntoConstraints = false
             dot.widthAnchor.constraint(equalToConstant: 7).isActive = true
             dot.heightAnchor.constraint(equalToConstant: 7).isActive = true
@@ -286,10 +286,10 @@ final class ForwardsView: NSView, TabScope {
             state.setContentCompressionResistancePriority(.init(200), for: .horizontal)
             let gap = NSView()
             gap.setContentHuggingPriority(.init(1), for: .horizontal)
-            let remove = NSButton(image: NSImage(systemSymbolName: "trash", accessibilityDescription: "Stop") ?? NSImage(),
+            let remove = NSButton(image: NSImage(systemSymbolName: "trash", accessibilityDescription: L("Stop")) ?? NSImage(),
                                   target: self, action: #selector(removeForward(_:)))
             remove.isBordered = false
-            remove.toolTip = "Stop this forward"
+            remove.toolTip = L("Stop this forward")
             remove.contentTintColor = NSColor(white: 1, alpha: 0.7)
             remove.identifier = NSUserInterfaceItemIdentifier(forward.id)
             addRow([dot, text, state, gap, remove])
@@ -305,7 +305,7 @@ final class ForwardsView: NSView, TabScope {
     @objc private func addForward() {
         let code = kindCode
         guard let listen = Int(listenPort.stringValue.trimmingCharacters(in: .whitespaces)), (1...65535).contains(listen) else {
-            hint.stringValue = "Enter a port between 1 and 65535."
+            hint.stringValue = L("Enter a port between 1 and 65535.")
             return
         }
         var host = "", port = 0
@@ -313,7 +313,7 @@ final class ForwardsView: NSView, TabScope {
             host = targetHost.stringValue.trimmingCharacters(in: .whitespaces)
             guard !host.isEmpty, let value = Int(targetPort.stringValue.trimmingCharacters(in: .whitespaces)),
                   (1...65535).contains(value) else {
-                hint.stringValue = "Enter a target host and a port between 1 and 65535."
+                hint.stringValue = L("Enter a target host and a port between 1 and 65535.")
                 return
             }
             port = value
@@ -344,7 +344,7 @@ final class ConnectionPickerView: NSView, TabScope, NSTableViewDataSource, NSTab
 
     init() {
         super.init(frame: .zero)
-        searchField.placeholderString = "Search, or type ssh user@host -p 22 ⏎"
+        searchField.placeholderString = L("Search, or type ssh user@host -p 22 ⏎")
         searchField.font = .systemFont(ofSize: 12)
         searchField.delegate = self
 
@@ -364,7 +364,7 @@ final class ConnectionPickerView: NSView, TabScope, NSTableViewDataSource, NSTab
         scroll.hasVerticalScroller = true
         scroll.drawsBackground = false
 
-        let manage = NSButton(title: "Manage Connections…", target: self, action: #selector(manage))
+        let manage = NSButton(title: L("Manage Connections…"), target: self, action: #selector(manage))
         manage.bezelStyle = .inline
         manage.controlSize = .small
 
@@ -415,7 +415,7 @@ final class ConnectionPickerView: NSView, TabScope, NSTableViewDataSource, NSTab
         }
         let grouped = Dictionary(grouping: matches) { $0.group }
         for group in grouped.keys.sorted(by: { ($0.isEmpty ? "~" : $0) < ($1.isEmpty ? "~" : $1) }) {
-            result.append(.group(group.isEmpty ? "Ungrouped" : group))
+            result.append(.group(group.isEmpty ? L("Ungrouped") : group))
             for profile in (grouped[group] ?? []).sorted(by: { $0.name.localizedStandardCompare($1.name) == .orderedAscending }) {
                 result.append(.profile(profile))
             }
@@ -487,7 +487,7 @@ final class ConnectionPickerView: NSView, TabScope, NSTableViewDataSource, NSTab
             fill(cell, symbol: profile.kind == "telnet" ? "antenna.radiowaves.left.and.right" : "network",
                  title: profile.name, detail: (profile.kind == "telnet" ? "telnet · " : "ssh · ") + profile.summary)
         case .command(_, let text):
-            fill(cell, symbol: "return", title: "Connect", detail: text)
+            fill(cell, symbol: "return", title: L("Connect"), detail: text)
         }
         return cell
     }

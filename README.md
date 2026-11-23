@@ -7,6 +7,7 @@ A menu bar suite for macOS. Screenshots, pinned images, clipboard history, Now P
 - Native Swift and AppKit, no third-party dependencies
 - Universal binary (Apple Silicon and Intel), macOS 14 or later
 - About 9 MB installed
+- English and Simplified Chinese interface: **Settings → General → Language** (English by default; takes effect after a restart)
 
 ## Features
 

@@ -101,6 +101,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             return
         }
 
+        if let index = args.firstIndex(of: "--l10n-selftest") {
+            let folder = index + 1 < args.count ? URL(fileURLWithPath: args[index + 1], isDirectory: true) : nil
+            L10nSelfTest.run(pictures: folder)
+            return
+        }
         if args.contains("--tab-selftest") {
             TabSelfTest.run()
             return
@@ -853,14 +858,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         let main = NSMenu()
         let editItem = NSMenuItem()
         let edit = NSMenu(title: "Edit")
-        edit.addItem(withTitle: "Undo", action: Selector(("undo:")), keyEquivalent: "z")
-        let redo = edit.addItem(withTitle: "Redo", action: Selector(("redo:")), keyEquivalent: "z")
+        edit.addItem(withTitle: L("Undo"), action: Selector(("undo:")), keyEquivalent: "z")
+        let redo = edit.addItem(withTitle: L("Redo"), action: Selector(("redo:")), keyEquivalent: "z")
         redo.keyEquivalentModifierMask = [.command, .shift]
         edit.addItem(.separator())
-        edit.addItem(withTitle: "Cut", action: #selector(NSText.cut(_:)), keyEquivalent: "x")
-        edit.addItem(withTitle: "Copy", action: #selector(NSText.copy(_:)), keyEquivalent: "c")
-        edit.addItem(withTitle: "Paste", action: #selector(NSText.paste(_:)), keyEquivalent: "v")
-        edit.addItem(withTitle: "Select All", action: #selector(NSText.selectAll(_:)), keyEquivalent: "a")
+        edit.addItem(withTitle: L("Cut"), action: #selector(NSText.cut(_:)), keyEquivalent: "x")
+        edit.addItem(withTitle: L("Copy"), action: #selector(NSText.copy(_:)), keyEquivalent: "c")
+        edit.addItem(withTitle: L("Paste"), action: #selector(NSText.paste(_:)), keyEquivalent: "v")
+        edit.addItem(withTitle: L("Select All"), action: #selector(NSText.selectAll(_:)), keyEquivalent: "a")
         editItem.submenu = edit
         main.addItem(editItem)
         NSApp.mainMenu = main
@@ -903,7 +908,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     @discardableResult
     private func addItem(_ menu: NSMenu, _ title: String, _ shortcut: String, _ action: Selector) -> NSMenuItem {
-        let item = NSMenuItem(title: shortcut.isEmpty ? title : "\(title)   \(shortcut)",
+        let item = NSMenuItem(title: shortcut.isEmpty ? L(title) : "\(L(title))   \(shortcut)",
                               action: action,
                               keyEquivalent: "")
         item.target = self
@@ -946,10 +951,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         guard force || ScreenCapture.isTrusted() else {
             ScreenCapture.requestAccess()
             let alert = NSAlert()
-            alert.messageText = "Screen Recording permission needed"
-            alert.informativeText = "System Settings → Privacy & Security → Screen Recording: enable OmniHub, then restart it.\n\nIf it is already enabled, the app was updated: remove it from the list (−) and add it again."
-            alert.addButton(withTitle: "Open System Settings")
-            alert.addButton(withTitle: "Cancel")
+            alert.messageText = L("Screen Recording permission needed")
+            alert.informativeText = L("System Settings → Privacy & Security → Screen Recording: enable OmniHub, then restart it.\n\nIf it is already enabled, the app was updated: remove it from the list (−) and add it again.")
+            alert.addButton(withTitle: L("Open System Settings"))
+            alert.addButton(withTitle: L("Cancel"))
             NSApp.activate(ignoringOtherApps: true)
             if alert.runModal() == .alertFirstButtonReturn {
                 ScreenCapture.openPrivacySettings()
@@ -966,7 +971,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             guard !captures.isEmpty else {
                 self.isSnipActive = false
                 self.statusItem?.button?.appearsDisabled = false
-                Toast.show("Screenshot failed: nothing captured", duration: 2)
+                Toast.show(L("Screenshot failed: nothing captured"), duration: 2)
                 return
             }
             let controller = OverlayController(captures: captures, autoScroll: autoScroll)
@@ -1004,6 +1009,7 @@ private struct PinDTOProbe: Codable {
 
 // Helper modes (ssh proxy, Telnet, askpass) run without starting the app.
 NetHelpers.runIfRequested()
+AppLanguage.start(arguments: CommandLine.arguments)
 
 let application = NSApplication.shared
 let delegate = AppDelegate()
