@@ -306,6 +306,9 @@ final class FloatingDockPanel: NSPanel, EscDismissable {
         panel.present(.home, hold: true, focus: false)
     }
 
+    /// Test hook: the page on show.
+    static var debugShownPage: NSView? { shared?.shownPage }
+
     /// Test hook: park the ball at a fraction of the screen (0…1, 0…1).
     static func debugMove(x: Double, y: Double) {
         guard let shared else { return }
@@ -354,6 +357,49 @@ final class FloatingDockPanel: NSPanel, EscDismissable {
     }
 
     override var canBecomeKey: Bool { true }
+
+    // MARK: Tab between controls (see TabOrder)
+
+    /// Tab / ⇧Tab are caught here, before the focused control sees them: a
+    /// text field built in code has no next key view, and its field editor
+    /// then keeps the Tab to itself instead of asking the window.
+    override func sendEvent(_ event: NSEvent) {
+        if handlesTab(event) { return }
+        super.sendEvent(event)
+    }
+
+    /// False when Tab belongs to the focused view: the shell, a multi-line
+    /// text, or text still being composed in an input method.
+    private func handlesTab(_ event: NSEvent) -> Bool {
+        guard event.type == .keyDown, event.keyCode == 48,
+              event.modifierFlags.intersection([.command, .control, .option]).isEmpty else { return false }
+        if let text = firstResponder as? NSTextView, !text.isFieldEditor || text.hasMarkedText() { return false }
+        return moveFocus(from: focusedControl, backwards: event.modifierFlags.contains(.shift))
+    }
+
+    /// The control that has the keyboard; a text field being edited stands
+    /// in for its field editor.
+    var focusedControl: NSView? {
+        if let editor = firstResponder as? NSTextView, editor.isFieldEditor { return editor.delegate as? NSView }
+        return firstResponder as? NSView
+    }
+
+    /// Moves the keyboard to the next (previous) control of the page or of
+    /// the panel open on top of it. False when there is nowhere to go.
+    @discardableResult
+    func moveFocus(from view: NSView?, backwards: Bool) -> Bool {
+        guard let page = shownPage else { return false }
+        let target: NSView?
+        if let view, view.isDescendant(of: page) {
+            target = TabOrder.next(after: view, backwards: backwards)
+        } else {
+            let stops = TabOrder.stops(in: TabOrder.topScope(in: page))
+            target = backwards ? stops.last : stops.first
+        }
+        guard let target, makeFirstResponder(target) else { return false }
+        target.scrollToVisible(target.bounds)
+        return true
+    }
 
     /// A click on the bare top strip: whatever the page has open on top
     /// (terminal settings, a drop-down) closes first; otherwise the card folds.

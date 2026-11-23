@@ -20,7 +20,7 @@ enum FormKit {
     }
 
     static func popup(width: CGFloat? = nil) -> NSPopUpButton {
-        let popup = NSPopUpButton(frame: .zero, pullsDown: false)
+        let popup = FocusPopUp(frame: .zero, pullsDown: false)
         popup.controlSize = .small
         popup.font = .systemFont(ofSize: 11.5)
         popup.translatesAutoresizingMaskIntoConstraints = false
@@ -37,7 +37,7 @@ enum FormKit {
     }
 
     static func button(_ title: String, _ target: AnyObject, _ action: Selector) -> NSButton {
-        let button = NSButton(title: title, target: target, action: action)
+        let button = FocusButton(title: title, target: target, action: action)
         button.bezelStyle = .rounded
         button.controlSize = .small
         return button
@@ -73,7 +73,7 @@ enum FormKit {
 
 /// Drop-down of the Port forwarding button: the forwards of this connection and a
 /// form for a new one.
-final class ForwardsView: NSView {
+final class ForwardsView: NSView, TabScope {
     private let session: TerminalSession
     private let list = NSStackView()
     private let kind = FormKit.popup(width: 150)
@@ -329,7 +329,7 @@ final class ForwardsView: NSView {
 
 /// Drop-down of the Connections button: type to filter the saved profiles,
 /// or type an ssh / telnet command and press Return.
-final class ConnectionPickerView: NSView, NSTableViewDataSource, NSTableViewDelegate, NSSearchFieldDelegate {
+final class ConnectionPickerView: NSView, TabScope, NSTableViewDataSource, NSTableViewDelegate, NSSearchFieldDelegate {
     var onConnect: ((RemoteTarget) -> Void)?
     var onManage: (() -> Void)?
     let searchField = NSSearchField()

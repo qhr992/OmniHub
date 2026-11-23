@@ -200,7 +200,7 @@ extension Notification.Name {
 // MARK: - Recorder control
 
 /// Click, then press the new shortcut. ⌫ clears it, Esc cancels.
-final class ShortcutRecorder: NSButton {
+final class ShortcutRecorder: FocusButton {
     let hotKeyAction: HotKeyAction
     private var recording = false
 

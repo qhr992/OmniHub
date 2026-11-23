@@ -231,7 +231,7 @@ final class TerminalKeymap {
 
 /// Click, then press the new shortcut for a terminal action. ⌫ clears it,
 /// Esc cancels.
-final class LocalKeyRecorder: NSButton {
+final class LocalKeyRecorder: FocusButton {
     private let terminalAction: TerminalAction
     private(set) var isRecording = false
 

@@ -283,7 +283,7 @@ final class TransferCenter {
 // MARK: - Recent downloads
 
 /// Drop-down of the Downloads button: recent transfers, running ones with a bar.
-final class TransfersView: NSView {
+final class TransfersView: NSView, TabScope {
     private let stack = NSStackView()
     private var rows: [String: TransferRow] = [:]
 
@@ -487,7 +487,7 @@ final class TransferRow: NSView {
 /// Slides up over the terminal: the server's folders and files.
 /// Double-click enters a folder; right-click (or two-finger click) offers
 /// Copy Path and Download.
-final class SFTPBrowserView: NSView, NSTableViewDataSource, NSTableViewDelegate, NSTextFieldDelegate {
+final class SFTPBrowserView: NSView, TabScope, NSTableViewDataSource, NSTableViewDelegate, NSTextFieldDelegate {
     let session: TerminalSession
     var onClose: (() -> Void)?
 

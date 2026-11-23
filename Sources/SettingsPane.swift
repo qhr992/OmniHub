@@ -2,7 +2,7 @@ import AppKit
 import ServiceManagement
 
 /// Checkbox bound to a boolean preference.
-final class PrefCheckbox: NSButton {
+final class PrefCheckbox: FocusButton {
     private let key: String
     private let onChange: (() -> Void)?
 
@@ -28,7 +28,7 @@ final class PrefCheckbox: NSButton {
 }
 
 /// Pop-up bound to an integer preference.
-final class PrefPopup: NSPopUpButton {
+final class PrefPopup: FocusPopUp {
     private let key: String
     private let values: [Int]
 
@@ -53,7 +53,7 @@ final class PrefPopup: NSPopUpButton {
 }
 
 /// Pop-up with named choices, bound to an integer preference.
-final class PrefChoice: NSPopUpButton {
+final class PrefChoice: FocusPopUp {
     private let key: String
     private let values: [Int]
 
@@ -80,12 +80,12 @@ final class PrefChoice: NSPopUpButton {
 /// Slider bound to an integer preference; the label follows the value.
 final class PrefSlider: NSStackView {
     private let key: String
-    private let slider: NSSlider
+    private let slider: FocusSlider
     private let valueLabel = NSTextField(labelWithString: "")
 
     init(key: String, fallback: Int, range: ClosedRange<Int>, width: CGFloat = 260, continuous: Bool = true) {
         self.key = key
-        slider = NSSlider(value: Double(Prefs.int(key, fallback)), minValue: Double(range.lowerBound),
+        slider = FocusSlider(value: Double(Prefs.int(key, fallback)), minValue: Double(range.lowerBound),
                           maxValue: Double(range.upperBound), target: nil, action: nil)
         super.init(frame: .zero)
         orientation = .horizontal
@@ -116,14 +116,14 @@ final class PrefSlider: NSStackView {
 /// Settings page of the dock card: one tab per module.
 final class SettingsPane: NSView, DockPage {
     private let tabs = NSTabView()
-    private let tabPicker = NSSegmentedControl()
-    private let loginCheckbox = NSButton(checkboxWithTitle: "Open at login", target: nil, action: nil)
+    private let tabPicker = FocusSegments()
+    private let loginCheckbox = FocusButton(checkboxWithTitle: "Open at login", target: nil, action: nil)
     private let screenStatus = NSTextField(labelWithString: "")
     private let accessStatus = NSTextField(labelWithString: "")
     private let calendarStatus = NSTextField(labelWithString: "")
     private let completedLabel = NSTextField(labelWithString: "")
     private let historyLabel = NSTextField(labelWithString: "")
-    private let dockVisible = NSButton(checkboxWithTitle: "Show dock", target: nil, action: nil)
+    private let dockVisible = FocusButton(checkboxWithTitle: "Show dock", target: nil, action: nil)
     private var statusTimer: Timer?
 
     init() {
@@ -241,7 +241,7 @@ final class SettingsPane: NSView, DockPage {
     }
 
     private func button(_ title: String, _ action: Selector) -> NSButton {
-        let button = NSButton(title: title, target: self, action: action)
+        let button = FocusButton(title: title, target: self, action: action)
         button.bezelStyle = .rounded
         return button
     }
@@ -283,7 +283,7 @@ final class SettingsPane: NSView, DockPage {
             let name = label(action.title)
             name.translatesAutoresizingMaskIntoConstraints = false
             name.widthAnchor.constraint(equalToConstant: 190).isActive = true
-            let clear = NSButton(title: "Clear", target: self, action: #selector(clearHotKey(_:)))
+            let clear = FocusButton(title: "Clear", target: self, action: #selector(clearHotKey(_:)))
             clear.bezelStyle = .rounded
             clear.controlSize = .small
             clear.tag = HotKeyAction.allCases.firstIndex(of: action) ?? 0
@@ -414,8 +414,9 @@ final class SettingsPane: NSView, DockPage {
         panel.layer?.backgroundColor = NSColor(white: 1, alpha: 0.05).cgColor
         panel.layer?.cornerRadius = 10
         panel.translatesAutoresizingMaskIntoConstraints = false
-        addSubview(panel)
+        // The tab strip first: Tab goes through the subviews in this order.
         addSubview(tabPicker)
+        addSubview(panel)
         panel.addSubview(tabs)
         NSLayoutConstraint.activate([
             tabPicker.topAnchor.constraint(equalTo: topAnchor),

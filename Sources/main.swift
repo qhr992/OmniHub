@@ -94,6 +94,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             return
         }
 
+        if args.contains("--tab-selftest") {
+            TabSelfTest.run()
+            return
+        }
+
         // `--zoom-render <dir>`: frames of the card's zoom transitions.
         if let index = args.firstIndex(of: "--zoom-render"), index + 1 < args.count {
             let directory = URL(fileURLWithPath: args[index + 1], isDirectory: true)

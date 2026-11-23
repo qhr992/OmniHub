@@ -60,6 +60,8 @@ SOURCES=(
   Sources/MarqueeLabel.swift
   Sources/FloatingDockPanel.swift
   Sources/DockSelfTest.swift
+  Sources/KeyboardFocus.swift
+  Sources/TabSelfTest.swift
 )
 
 echo "==> compiling (arm64)"

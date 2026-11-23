@@ -818,14 +818,3 @@ final class TaskRowView: NSView {
         if task.done { TaskStore.shared.reopen(task.id) } else { TaskStore.shared.complete(task.id) }
     }
 }
-
-/// A button that Tab can reach even without macOS "Keyboard navigation";
-/// Return, Enter or Space presses it.
-final class FocusButton: NSButton {
-    override var canBecomeKeyView: Bool { isEnabled && !isHidden }
-    override var acceptsFirstResponder: Bool { isEnabled }
-
-    override func keyDown(with event: NSEvent) {
-        if [36, 76, 49].contains(event.keyCode) { performClick(nil) } else { super.keyDown(with: event) }
-    }
-}

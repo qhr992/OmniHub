@@ -126,6 +126,8 @@ final class TerminalSession {
         textView.isIncrementalSearchingEnabled = true
         textView.onInput = { [weak self] data in self?.write(data) }
         textView.onAction = { [weak self] action in self?.perform(action) ?? false }
+        // The first prompt may be drawn before the view is on the (dark) card.
+        textView.onAppearanceChange = { [weak self] in self?.render() }
 
         scrollView.documentView = textView
         scrollView.hasVerticalScroller = true
@@ -546,8 +548,8 @@ final class TerminalSession {
         storage.beginEditing()
         storage.replaceCharacters(in: range, with: NSAttributedString(string: text, attributes: attributes))
         if let cursorRange, cursorRange.upperBound <= storage.length {
-            storage.addAttributes([.backgroundColor: NSColor.textColor.withAlphaComponent(0.55),
-                                   .foregroundColor: NSColor.textBackgroundColor],
+            let colors = cursorColors()
+            storage.addAttributes([.backgroundColor: colors.back, .foregroundColor: colors.fore],
                                   range: cursorRange)
         }
         storage.endEditing()
@@ -556,6 +558,32 @@ final class TerminalSession {
         renderedLengths.append(contentsOf: lengths)
         lastCursorRow = cursorRow
         textView.scrollToEndOfDocument(nil)
+    }
+
+    /// Block cursor colours for the appearance the terminal is drawn in (the
+    /// card is always dark). A system colour turned into a fixed one outside
+    /// drawing takes the app's appearance instead — light when macOS is in
+    /// light mode — and gave a black block nobody could see on the dark card.
+    private func cursorColors() -> (back: NSColor, fore: NSColor) {
+        var back = NSColor.white.withAlphaComponent(Self.cursorAlpha)
+        var fore = NSColor.black
+        textView.effectiveAppearance.performAsCurrentDrawingAppearance {
+            back = (NSColor.textColor.usingColorSpace(.sRGB) ?? .white).withAlphaComponent(Self.cursorAlpha)
+            fore = NSColor.textBackgroundColor.usingColorSpace(.sRGB) ?? .black
+        }
+        return (back, fore)
+    }
+
+    private static let cursorAlpha: CGFloat = 0.8
+
+    /// Test hook: the cursor cell's background as drawn, in sRGB.
+    var debugCursorColor: NSColor? {
+        guard let storage = textView.textStorage else { return nil }
+        var found: NSColor?
+        storage.enumerateAttribute(.backgroundColor, in: NSRange(location: 0, length: storage.length)) { value, _, stop in
+            if let color = value as? NSColor { found = color; stop.pointee = true }
+        }
+        return found?.usingColorSpace(.sRGB)
     }
 
     /// The font size changed: redraw everything and tell the shell the new
@@ -599,8 +627,14 @@ final class TerminalSession {
 final class TerminalTextView: NSTextView {
     var onInput: ((Data) -> Void)?
     var onAction: ((TerminalAction) -> Bool)?
+    var onAppearanceChange: (() -> Void)?
 
     override var acceptsFirstResponder: Bool { true }
+
+    override func viewDidChangeEffectiveAppearance() {
+        super.viewDidChangeEffectiveAppearance()
+        onAppearanceChange?()
+    }
 
     override func becomeFirstResponder() -> Bool {
         let accepted = super.becomeFirstResponder()

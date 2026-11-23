@@ -2,9 +2,9 @@ import AppKit
 
 /// Terminal settings, opened with the gear at the top right of the terminal
 /// page: Connections · Vault · Proxies. A click outside the panel closes it.
-final class TerminalSettingsView: NSView {
+final class TerminalSettingsView: NSView, TabScope {
     var onClose: (() -> Void)?
-    private let segments = NSSegmentedControl(labels: ["Connections", "Vault", "Proxies"], trackingMode: .selectOne,
+    private let segments = FocusSegments(labels: ["Connections", "Vault", "Proxies"], trackingMode: .selectOne,
                                               target: nil, action: nil)
     private let editors: [ListEditor] = [ProfilesEditor(), VaultEditor(), ProxiesEditor()]
     private let host = NSView()
@@ -38,7 +38,7 @@ final class TerminalSettingsView: NSView {
         segments.target = self
         segments.action = #selector(segmentChanged)
         segments.controlSize = .small
-        let done = NSButton(image: NSImage(systemSymbolName: "xmark", accessibilityDescription: "Close") ?? NSImage(),
+        let done = FocusButton(image: NSImage(systemSymbolName: "xmark", accessibilityDescription: "Close") ?? NSImage(),
                             target: self, action: #selector(close))
         done.isBordered = false
         done.toolTip = "Close"
@@ -107,7 +107,7 @@ class ListEditor: NSView, NSTableViewDataSource, NSTableViewDelegate {
         let detail: String
     }
 
-    let tableView = NSTableView()
+    let tableView = FocusTable()
     let form = NSStackView()
     /// Stays at the bottom of the form, outside its scroll area (Save…).
     let footer = NSStackView()
@@ -151,7 +151,7 @@ class ListEditor: NSView, NSTableViewDataSource, NSTableViewDelegate {
         func icon(_ symbol: String, _ tooltip: String, _ action: Selector) -> NSButton {
             let image = NSImage(systemSymbolName: symbol, accessibilityDescription: tooltip)?
                 .withSymbolConfiguration(.init(pointSize: 12, weight: .medium))
-            let button = NSButton(image: image ?? NSImage(), target: self, action: action)
+            let button = FocusButton(image: image ?? NSImage(), target: self, action: action)
             button.isBordered = false
             button.toolTip = tooltip
             button.contentTintColor = NSColor(white: 1, alpha: 0.8)
@@ -630,7 +630,7 @@ final class StepRow: NSStackView {
         reply.toolTip = "Plain text typed at the prompt"
         secret.toolTip = "Vault password typed at the prompt"
         FormKit.fill(secret, none: "No password", items: FormKit.vaultItems, current: step.secretID)
-        let remove = NSButton(image: NSImage(systemSymbolName: "minus.circle", accessibilityDescription: "Remove") ?? NSImage(),
+        let remove = FocusButton(image: NSImage(systemSymbolName: "minus.circle", accessibilityDescription: "Remove") ?? NSImage(),
                               target: self, action: #selector(removeTapped))
         remove.isBordered = false
         remove.toolTip = "Remove"
