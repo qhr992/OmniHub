@@ -7,10 +7,11 @@ A menu bar suite for macOS. Screenshots, pinned images, clipboard history, Now P
 - Native Swift and AppKit, no third-party dependencies
 - Universal binary (Apple Silicon and Intel), macOS 14 or later
 - About 9 MB installed
+- English and Simplified Chinese interface: **Settings → General → Language** (English by default; takes effect after a restart)
 
 ## Features
 
-**Floating dock.** A small ball that stays where you drop it. Hover over it to open a card next to it; the card grows out of the ball and folds back when the pointer leaves. While media plays, the ball stretches into a pill with the spinning cover and a level meter. The dock gives access to every page: Home, Activity, Agenda, Terminal, Shelf, Clipboard and Settings.
+**Floating dock.** A small ball that stays where you drop it. Hover over it to open a card next to it; the card grows out of the ball and folds back when the pointer leaves. While media plays, the ball stretches into a pill with the spinning cover and a level meter. The dock gives access to every page: Home, Activity, Agenda, Terminal, Shelf, Clipboard and Settings. A page opened with its shortcut stays in front until you close it; once you switch to another page, the card folds away when you click elsewhere. In the card, Tab / ⇧Tab move between fields and settings; Space or Return works the focused control.
 
 **Screenshots.**
 - Capture with window detection, a magnifier and annotations with undo and redo: frames (rectangle or ellipse), arrows, pen, text, and a mosaic brush in three sizes to hide sensitive content. The chosen tool's options (shape, colour, brush size) open in a strip under the toolbar.
@@ -119,7 +120,7 @@ The boot animation and illustrations are generated from the sources in `Tools/bo
 |---|---|
 | Clipboard history, to-dos, terminal profiles, shelf files | `~/Library/Application Support/OmniHub/` |
 | Settings | UserDefaults domain `com.local.omnihub` |
-| Passwords | Login Keychain, service `com.local.omnihub.vault` |
+| Passwords | Login Keychain, service `com.local.omnihub.vault`, one item for all of them (macOS asks once, and once again after an update) |
 
 OmniHub makes network requests only to fetch lyrics (`music.163.com`, `lrclib.net`) and, if you turn it on, to look up your public IP address (`api.ipify.org`).
 

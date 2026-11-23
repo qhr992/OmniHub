@@ -2,9 +2,9 @@ import AppKit
 
 /// Terminal settings, opened with the gear at the top right of the terminal
 /// page: Connections · Vault · Proxies. A click outside the panel closes it.
-final class TerminalSettingsView: NSView {
+final class TerminalSettingsView: NSView, TabScope {
     var onClose: (() -> Void)?
-    private let segments = NSSegmentedControl(labels: ["Connections", "Vault", "Proxies"], trackingMode: .selectOne,
+    private let segments = FocusSegments(labels: [L("Connections"), L("Vault"), L("Proxies")], trackingMode: .selectOne,
                                               target: nil, action: nil)
     private let editors: [ListEditor] = [ProfilesEditor(), VaultEditor(), ProxiesEditor()]
     private let host = NSView()
@@ -38,10 +38,10 @@ final class TerminalSettingsView: NSView {
         segments.target = self
         segments.action = #selector(segmentChanged)
         segments.controlSize = .small
-        let done = NSButton(image: NSImage(systemSymbolName: "xmark", accessibilityDescription: "Close") ?? NSImage(),
+        let done = FocusButton(image: NSImage(systemSymbolName: "xmark", accessibilityDescription: L("Close")) ?? NSImage(),
                             target: self, action: #selector(close))
         done.isBordered = false
-        done.toolTip = "Close"
+        done.toolTip = L("Close")
         done.contentTintColor = NSColor(white: 1, alpha: 0.8)
         let title = FormKit.label("Terminal Settings", size: 12, alpha: 1)
         title.font = .systemFont(ofSize: 12, weight: .semibold)
@@ -107,7 +107,7 @@ class ListEditor: NSView, NSTableViewDataSource, NSTableViewDelegate {
         let detail: String
     }
 
-    let tableView = NSTableView()
+    let tableView = FocusTable()
     let form = NSStackView()
     /// Stays at the bottom of the form, outside its scroll area (Save…).
     let footer = NSStackView()
@@ -149,9 +149,10 @@ class ListEditor: NSView, NSTableViewDataSource, NSTableViewDelegate {
         scroll.layer?.cornerRadius = 7
 
         func icon(_ symbol: String, _ tooltip: String, _ action: Selector) -> NSButton {
+            let tooltip = L(tooltip)
             let image = NSImage(systemSymbolName: symbol, accessibilityDescription: tooltip)?
                 .withSymbolConfiguration(.init(pointSize: 12, weight: .medium))
-            let button = NSButton(image: image ?? NSImage(), target: self, action: action)
+            let button = FocusButton(image: image ?? NSImage(), target: self, action: action)
             button.isBordered = false
             button.toolTip = tooltip
             button.contentTintColor = NSColor(white: 1, alpha: 0.8)
@@ -259,7 +260,7 @@ class ListEditor: NSView, NSTableViewDataSource, NSTableViewDelegate {
         form.isHidden = !has
         footer.isHidden = !has
         emptyLabel.isHidden = has
-        emptyLabel.stringValue = emptyText
+        emptyLabel.stringValue = L(emptyText)
         cloneButton.isEnabled = has
         deleteButton.isEnabled = has
         if let selectedID { fillForm(selectedID) }
@@ -278,7 +279,7 @@ class ListEditor: NSView, NSTableViewDataSource, NSTableViewDelegate {
     @objc func saveTapped() {
         commit()
         refresh()
-        savedNote.stringValue = "Saved ✓"
+        savedNote.stringValue = L("Saved ✓")
         savedNote.alphaValue = 1
         savedStamp += 1
         let mine = savedStamp
@@ -382,7 +383,7 @@ final class ProfilesEditor: ListEditor {
         var result: [Item] = []
         let grouped = Dictionary(grouping: ConnectionStore.shared.profiles) { $0.group }
         for key in grouped.keys.sorted(by: { ($0.isEmpty ? "~" : $0) < ($1.isEmpty ? "~" : $1) }) {
-            result.append(Item(id: nil, title: key.isEmpty ? "Ungrouped" : key, detail: ""))
+            result.append(Item(id: nil, title: key.isEmpty ? L("Ungrouped") : key, detail: ""))
             for profile in (grouped[key] ?? []).sorted(by: { $0.name.localizedStandardCompare($1.name) == .orderedAscending }) {
                 result.append(Item(id: profile.id, title: profile.name, detail: "\(profile.kind) · \(profile.summary)"))
             }
@@ -393,7 +394,7 @@ final class ProfilesEditor: ListEditor {
     override func buildForm() {
         group.font = .systemFont(ofSize: 12)
         group.controlSize = .small
-        group.placeholderString = "Group"
+        group.placeholderString = L("Group")
         group.translatesAutoresizingMaskIntoConstraints = false
         group.widthAnchor.constraint(equalToConstant: 160).isActive = true
         kind.addItems(withTitles: ["SSH", "Telnet"])
@@ -413,8 +414,8 @@ final class ProfilesEditor: ListEditor {
 
         credential.target = self
         credential.action = #selector(credentialChanged)
-        credential.toolTip = "Username & Password typed here, or a Vault entry (its Username is used)."
-        password.placeholderString = "Empty = ask when connecting"
+        credential.toolTip = L("Username & Password typed here, or a Vault entry (its Username is used).")
+        password.placeholderString = L("Empty = ask when connecting")
         password.font = .systemFont(ofSize: 12)
         password.controlSize = .small
         password.translatesAutoresizingMaskIntoConstraints = false
@@ -453,7 +454,7 @@ final class ProfilesEditor: ListEditor {
         let panel = NSOpenPanel()
         panel.directoryURL = URL(fileURLWithPath: NSHomeDirectory() + "/.ssh")
         panel.showsHiddenFiles = true
-        panel.message = "Choose a private key"
+        panel.message = L("Choose a private key")
         NSApp.activate(ignoringOtherApps: true)
         if panel.runModal() == .OK, let url = panel.url { keyPath.stringValue = url.path }
     }
@@ -485,7 +486,7 @@ final class ProfilesEditor: ListEditor {
     private func fillCredential(_ profile: ConnectionProfile) {
         let current = profile.vaultEntry == nil ? "" : profile.secretID
         FormKit.fill(credential, none: "Username & Password",
-                     items: FormKit.vaultItems.map { ($0.id, "Vault: \($0.name)") }, current: current)
+                     items: FormKit.vaultItems.map { ($0.id, L("Vault: %@", $0.name)) }, current: current)
         password.stringValue = profile.secretID == profile.ownSecretID ? (Vault.secret(for: profile.ownSecretID) ?? "") : ""
         credentialChanged()
     }
@@ -498,10 +499,10 @@ final class ProfilesEditor: ListEditor {
         passwordLines.forEach { $0.isHidden = entry != nil }
         vaultNoteLine?.isHidden = entry == nil
         if let entry {
-            vaultNote.stringValue = entry.account.isEmpty ? "No username: none is sent" : "Logs in as \(entry.account)"
+            vaultNote.stringValue = entry.account.isEmpty ? L("No username: none is sent") : L("Logs in as %@", entry.account)
             vaultNote.toolTip = entry.account.isEmpty
-                ? "This Vault entry has no Username: no account name is sent."
-                : "Logs in with the Vault entry's Username."
+                ? L("This Vault entry has no Username: no account name is sent.")
+                : L("Logs in with the Vault entry's Username.")
         }
     }
 
@@ -540,7 +541,7 @@ final class ProfilesEditor: ListEditor {
         guard let id = selectedID, var profile = ConnectionStore.shared.profile(id) else { return }
         let before = profile
         let trimmed = name.stringValue.trimmingCharacters(in: .whitespaces)
-        profile.name = trimmed.isEmpty ? "Untitled" : trimmed
+        profile.name = trimmed.isEmpty ? L("Untitled") : trimmed
         profile.group = group.stringValue.trimmingCharacters(in: .whitespaces)
         profile.kind = kind.indexOfSelectedItem == 1 ? "telnet" : "ssh"
         profile.host = host.stringValue.trimmingCharacters(in: .whitespaces)
@@ -571,19 +572,19 @@ final class ProfilesEditor: ListEditor {
         refresh()
         guard let id = selectedID, let profile = ConnectionStore.shared.profile(id) else { return }
         guard !profile.host.isEmpty else {
-            show(test: "Enter a host first.", ok: false)
+            show(test: L("Enter a host first."), ok: false)
             return
         }
         testResult.textColor = NSColor(white: 1, alpha: 0.6)
-        testResult.stringValue = "Testing…"
+        testResult.stringValue = L("Testing…")
         let (arguments, environment) = RemoteTarget(profile: profile).testLaunch()
         let started = Date()
         Subprocess.run(arguments, environment: environment) { [weak self] result in
             guard let self, self.selectedID == id else { return }
             if result.ok {
-                self.show(test: String(format: "Connected ✓  (%.1f s)", Date().timeIntervalSince(started)), ok: true)
+                self.show(test: L("Connected ✓  (%.1f s)", Date().timeIntervalSince(started)), ok: true)
             } else {
-                self.show(test: "Failed: \(result.message)", ok: false)
+                self.show(test: L("Failed: %@", result.message), ok: false)
             }
         }
     }
@@ -599,7 +600,7 @@ final class ProfilesEditor: ListEditor {
 
     override func createItem() -> String {
         var profile = ConnectionProfile()
-        profile.name = "New Connection"
+        profile.name = L("New Connection")
         ConnectionStore.shared.upsert(profile)
         return profile.id
     }
@@ -625,15 +626,15 @@ final class StepRow: NSStackView {
         command.stringValue = step.send
         prompt.stringValue = step.expect
         reply.stringValue = step.reply
-        command.toolTip = "Command to run"
-        prompt.toolTip = "Text to wait for before answering. Empty = any password or (yes/no) prompt."
-        reply.toolTip = "Plain text typed at the prompt"
-        secret.toolTip = "Vault password typed at the prompt"
+        command.toolTip = L("Command to run")
+        prompt.toolTip = L("Text to wait for before answering. Empty = any password or (yes/no) prompt.")
+        reply.toolTip = L("Plain text typed at the prompt")
+        secret.toolTip = L("Vault password typed at the prompt")
         FormKit.fill(secret, none: "No password", items: FormKit.vaultItems, current: step.secretID)
-        let remove = NSButton(image: NSImage(systemSymbolName: "minus.circle", accessibilityDescription: "Remove") ?? NSImage(),
+        let remove = FocusButton(image: NSImage(systemSymbolName: "minus.circle", accessibilityDescription: L("Remove")) ?? NSImage(),
                               target: self, action: #selector(removeTapped))
         remove.isBordered = false
-        remove.toolTip = "Remove"
+        remove.toolTip = L("Remove")
         remove.contentTintColor = NSColor(white: 1, alpha: 0.7)
         addArrangedSubview(FormKit.row([command, remove], spacing: 4))
         addArrangedSubview(FormKit.row([prompt, reply, secret], spacing: 4))
@@ -662,11 +663,11 @@ final class VaultEditor: ListEditor {
     override var emptyText: String { "The vault is empty. Passwords saved here go to the macOS Keychain; connections, commands and proxies can use them." }
 
     override func loadItems() -> [Item] {
-        ConnectionStore.shared.vault.map { Item(id: $0.id, title: $0.name, detail: $0.account.isEmpty ? "Password saved" : $0.account) }
+        ConnectionStore.shared.vault.map { Item(id: $0.id, title: $0.name, detail: $0.account.isEmpty ? L("Password saved") : $0.account) }
     }
 
     override func buildForm() {
-        password.placeholderString = "New password (empty = keep)"
+        password.placeholderString = L("New password (empty = keep)")
         password.font = .systemFont(ofSize: 12)
         password.controlSize = .small
         password.translatesAutoresizingMaskIntoConstraints = false
@@ -686,14 +687,14 @@ final class VaultEditor: ListEditor {
         name.stringValue = entry.name
         account.stringValue = entry.account
         password.stringValue = ""
-        status.stringValue = Vault.secret(for: id) == nil ? "No password saved yet" : "Password saved ✓"
+        status.stringValue = Vault.secret(for: id) == nil ? L("No password saved yet") : L("Password saved ✓")
     }
 
     override func commit() {
         guard let id = selectedID, var entry = ConnectionStore.shared.vault.first(where: { $0.id == id }) else { return }
         let before = entry
         let trimmed = name.stringValue.trimmingCharacters(in: .whitespaces)
-        entry.name = trimmed.isEmpty ? "Untitled" : trimmed
+        entry.name = trimmed.isEmpty ? L("Untitled") : trimmed
         entry.account = account.stringValue.trimmingCharacters(in: .whitespaces)
         let secret = password.stringValue.isEmpty ? nil : password.stringValue
         if entry != before || secret != nil { ConnectionStore.shared.upsert(entry, secret: secret) }
@@ -702,7 +703,7 @@ final class VaultEditor: ListEditor {
 
     override func createItem() -> String {
         var entry = VaultEntry()
-        entry.name = "New Password"
+        entry.name = L("New Password")
         ConnectionStore.shared.upsert(entry, secret: nil)
         return entry.id
     }
@@ -763,7 +764,7 @@ final class ProxiesEditor: ListEditor {
         guard let id = selectedID, var proxy = ConnectionStore.shared.proxy(id) else { return }
         let before = proxy
         let trimmed = name.stringValue.trimmingCharacters(in: .whitespaces)
-        proxy.name = trimmed.isEmpty ? "Untitled" : trimmed
+        proxy.name = trimmed.isEmpty ? L("Untitled") : trimmed
         proxy.kind = Self.kinds[max(0, kind.indexOfSelectedItem)]
         proxy.host = host.stringValue.trimmingCharacters(in: .whitespaces)
         proxy.port = Int(port.stringValue.trimmingCharacters(in: .whitespaces)) ?? 1080
@@ -774,7 +775,7 @@ final class ProxiesEditor: ListEditor {
 
     override func createItem() -> String {
         var proxy = ProxyConfig()
-        proxy.name = "New Proxy"
+        proxy.name = L("New Proxy")
         ConnectionStore.shared.upsert(proxy)
         return proxy.id
     }

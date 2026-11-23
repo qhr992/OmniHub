@@ -66,6 +66,17 @@ enum DockSelfTest {
               FloatingDockPanel.terminal.debugSettings == nil && FloatingDockPanel.debugPage == .terminal)
         FloatingDockPanel.debugHeaderClick()
         check("header click on a bare page folds the card", FloatingDockPanel.debugPage == nil)
+
+        // ---- a hotkey pins only the page it opened
+        FloatingDockPanel.open(.terminal, toggle: false)
+        let pinned = FloatingDockPanel.debugHeld
+        FloatingDockPanel.debugTapNav(.terminal)
+        let samePage = FloatingDockPanel.debugHeld
+        FloatingDockPanel.debugTapNav(.home)
+        check("a hotkey-opened page stays pinned; clicking another page unpins the card (it folds when it loses focus)",
+              pinned && samePage && !FloatingDockPanel.debugHeld && FloatingDockPanel.debugPage == .home,
+              "pinned=\(pinned) same page=\(samePage) after Home=\(FloatingDockPanel.debugHeld) page=\(String(describing: FloatingDockPanel.debugPage))")
+        FloatingDockPanel.closeCard()
         FloatingDockPanel.terminateShells()
 
         // ---- Home to-dos: scrolling, double-click opens the Agenda

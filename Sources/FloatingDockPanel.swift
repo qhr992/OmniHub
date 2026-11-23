@@ -39,13 +39,13 @@ final class FloatingDockPanel: NSPanel, EscDismissable {
 
         var title: String {
             switch self {
-            case .home: return "Home"
-            case .activity: return "Activity"
-            case .terminal: return "Terminal"
-            case .clipboard: return "Clipboard"
-            case .shelf: return "Shelf"
-            case .tasks: return "Agenda"
-            case .settings: return "Settings"
+            case .home: return L("Home")
+            case .activity: return L("Activity")
+            case .terminal: return L("Terminal")
+            case .clipboard: return L("Clipboard")
+            case .shelf: return L("Shelf")
+            case .tasks: return L("Agenda")
+            case .settings: return L("Settings")
             }
         }
 
@@ -306,6 +306,9 @@ final class FloatingDockPanel: NSPanel, EscDismissable {
         panel.present(.home, hold: true, focus: false)
     }
 
+    /// Test hook: the page on show.
+    static var debugShownPage: NSView? { shared?.shownPage }
+
     /// Test hook: park the ball at a fraction of the screen (0…1, 0…1).
     static func debugMove(x: Double, y: Double) {
         guard let shared else { return }
@@ -354,6 +357,49 @@ final class FloatingDockPanel: NSPanel, EscDismissable {
     }
 
     override var canBecomeKey: Bool { true }
+
+    // MARK: Tab between controls (see TabOrder)
+
+    /// Tab / ⇧Tab are caught here, before the focused control sees them: a
+    /// text field built in code has no next key view, and its field editor
+    /// then keeps the Tab to itself instead of asking the window.
+    override func sendEvent(_ event: NSEvent) {
+        if handlesTab(event) { return }
+        super.sendEvent(event)
+    }
+
+    /// False when Tab belongs to the focused view: the shell, a multi-line
+    /// text, or text still being composed in an input method.
+    private func handlesTab(_ event: NSEvent) -> Bool {
+        guard event.type == .keyDown, event.keyCode == 48,
+              event.modifierFlags.intersection([.command, .control, .option]).isEmpty else { return false }
+        if let text = firstResponder as? NSTextView, !text.isFieldEditor || text.hasMarkedText() { return false }
+        return moveFocus(from: focusedControl, backwards: event.modifierFlags.contains(.shift))
+    }
+
+    /// The control that has the keyboard; a text field being edited stands
+    /// in for its field editor.
+    var focusedControl: NSView? {
+        if let editor = firstResponder as? NSTextView, editor.isFieldEditor { return editor.delegate as? NSView }
+        return firstResponder as? NSView
+    }
+
+    /// Moves the keyboard to the next (previous) control of the page or of
+    /// the panel open on top of it. False when there is nowhere to go.
+    @discardableResult
+    func moveFocus(from view: NSView?, backwards: Bool) -> Bool {
+        guard let page = shownPage else { return false }
+        let target: NSView?
+        if let view, view.isDescendant(of: page) {
+            target = TabOrder.next(after: view, backwards: backwards)
+        } else {
+            let stops = TabOrder.stops(in: TabOrder.topScope(in: page))
+            target = backwards ? stops.last : stops.first
+        }
+        guard let target, makeFirstResponder(target) else { return false }
+        target.scrollToVisible(target.bounds)
+        return true
+    }
 
     /// A click on the bare top strip: whatever the page has open on top
     /// (terminal settings, a drop-down) closes first; otherwise the card folds.
@@ -447,7 +493,7 @@ final class FloatingDockPanel: NSPanel, EscDismissable {
         pageTitle.textColor = .white
         holidayLabel.font = .systemFont(ofSize: 11, weight: .medium)
         holidayLabel.textColor = NSColor(srgbRed: 1.0, green: 0.80, blue: 0.45, alpha: 1)
-        holidayLabel.toolTip = "Next public holiday"
+        holidayLabel.toolTip = L("Next public holiday")
         for view in [nav, navTrailing, pageTitle, holidayLabel, pageHost] as [NSView] { cardView.addSubview(view) }
 
         buildHomePage()
@@ -483,7 +529,7 @@ final class FloatingDockPanel: NSPanel, EscDismissable {
         // A click on the cover opens the playing app (a gesture recognizer
         // never fired here: the card is usually not the key window).
         artwork.onClick = { MediaObserver.shared.activateOwner() }
-        artwork.toolTip = "Open the app that is playing"
+        artwork.toolTip = L("Open the app that is playing")
 
         titleLabel.font = .systemFont(ofSize: 13, weight: .semibold)
         titleLabel.textColor = .white
@@ -500,7 +546,7 @@ final class FloatingDockPanel: NSPanel, EscDismissable {
         titles.alignment = .leading
         titles.spacing = 2
         titles.onClick = { MediaObserver.shared.activateOwner() }
-        titles.toolTip = "Open the app that is playing"
+        titles.toolTip = L("Open the app that is playing")
         titles.setContentHuggingPriority(.defaultLow, for: .horizontal)
 
         cardBars.translatesAutoresizingMaskIntoConstraints = false
@@ -556,7 +602,7 @@ final class FloatingDockPanel: NSPanel, EscDismissable {
         side.orientation = .vertical
         side.alignment = .leading
         side.spacing = 8
-        let taskHeader = NSTextField(labelWithString: "To-dos")
+        let taskHeader = NSTextField(labelWithString: L("To-dos"))
         taskHeader.font = .systemFont(ofSize: 10, weight: .semibold)
         taskHeader.textColor = NSColor(white: 1, alpha: 0.45)
         side.addArrangedSubview(taskHeader)
@@ -600,6 +646,7 @@ final class FloatingDockPanel: NSPanel, EscDismissable {
     }
 
     private func configure(_ button: NSButton, symbol: String, tooltip: String, action: Selector, size: CGFloat) {
+        let tooltip = L(tooltip)
         let config = NSImage.SymbolConfiguration(pointSize: size, weight: .semibold)
         button.image = NSImage(systemSymbolName: symbol, accessibilityDescription: tooltip)?
             .withSymbolConfiguration(config)
@@ -666,7 +713,7 @@ final class FloatingDockPanel: NSPanel, EscDismissable {
         // Player column
         if let media, Prefs.bool("dock.showMedia", true) {
             player.isHidden = false
-            titleLabel.stringValue = media.title.isEmpty ? "Unknown track" : media.title
+            titleLabel.stringValue = media.title.isEmpty ? L("Unknown track") : media.title
             artistLabel.stringValue = [media.artist, media.appName].filter { !$0.isEmpty }.joined(separator: " · ")
             artwork.image = media.artwork ?? NSImage(systemSymbolName: "music.note", accessibilityDescription: nil)
             artworkHolder.layer?.shadowColor = (media.artwork.flatMap(Self.averageColor) ?? .black).cgColor
@@ -679,16 +726,16 @@ final class FloatingDockPanel: NSPanel, EscDismissable {
             cardBars.alphaValue = media.isPlaying ? 1 : 0.35
             let mode = MediaObserver.playMode(of: media)
             let modeSymbol = ["order": "repeat", "repeatOne": "repeat.1", "shuffle": "shuffle"][mode.rawValue] ?? "repeat"
-            modeButton.image = NSImage(systemSymbolName: modeSymbol, accessibilityDescription: "Play mode")?
+            modeButton.image = NSImage(systemSymbolName: modeSymbol, accessibilityDescription: L("Play mode"))?
                 .withSymbolConfiguration(.init(pointSize: 12, weight: .semibold))
-            modeButton.toolTip = ["order": "Play mode: in order", "repeatOne": "Play mode: repeat one",
-                                  "shuffle": "Play mode: shuffle"][mode.rawValue]
+            modeButton.toolTip = ["order": L("Play mode: in order"), "repeatOne": L("Play mode: repeat one"),
+                                  "shuffle": L("Play mode: shuffle")][mode.rawValue]
             modeButton.contentTintColor = mode == .order ? NSColor(white: 1, alpha: 0.7) : .white
             let liked = media.liked ?? false
-            likeButton.image = NSImage(systemSymbolName: liked ? "heart.fill" : "heart", accessibilityDescription: "Like")?
+            likeButton.image = NSImage(systemSymbolName: liked ? "heart.fill" : "heart", accessibilityDescription: L("Like"))?
                 .withSymbolConfiguration(.init(pointSize: 13, weight: .semibold))
             likeButton.contentTintColor = liked ? NSColor(srgbRed: 1, green: 0.36, blue: 0.48, alpha: 1) : NSColor(white: 1, alpha: 0.7)
-            likeButton.toolTip = liked ? "Unlike" : "Like"
+            likeButton.toolTip = liked ? L("Unlike") : L("Like")
             // Controls the player cannot take are dimmed; the tip says why.
             for (button, control) in [(modeButton, MediaObserver.Control.playMode), (likeButton, .like)] {
                 if case .unavailable(let reason) = MediaObserver.shared.route(control, for: media) {
@@ -702,7 +749,7 @@ final class FloatingDockPanel: NSPanel, EscDismissable {
             let followed = MediaObserver.followedReason(media)
             for (button, tip) in [(previousButton, "Previous"), (playButton, "Play / Pause"), (nextButton, "Next")] {
                 button.alphaValue = followed == nil ? 1 : 0.35
-                button.toolTip = followed ?? tip
+                button.toolTip = followed ?? L(tip)
             }
             if let note = controlNote, note.until > Date() {
                 artistLabel.stringValue = note.text
@@ -722,7 +769,7 @@ final class FloatingDockPanel: NSPanel, EscDismissable {
         }
         let all = TaskStore.shared.active
         if all.isEmpty {
-            let empty = NSTextField(labelWithString: "No to-dos")
+            let empty = NSTextField(labelWithString: L("No to-dos"))
             empty.font = .systemFont(ofSize: 12)
             empty.textColor = NSColor(white: 1, alpha: 0.4)
             tasksBox.addArrangedSubview(empty)
@@ -850,7 +897,7 @@ final class FloatingDockPanel: NSPanel, EscDismissable {
         let panel = NSOpenPanel()
         panel.allowedContentTypes = [.image]
         panel.allowsMultipleSelection = false
-        panel.message = "Choose a dock icon (any image)"
+        panel.message = L("Choose a dock icon (any image)")
         guard panel.runModal() == .OK, let url = panel.url else { return }
         if !setCustomIcon(from: url) {
             Toast.show("Cannot read this image", duration: 2)
@@ -1901,12 +1948,12 @@ final class FloatingDockPanel: NSPanel, EscDismissable {
 
     fileprivate func ballMenu(with event: NSEvent) {
         let menu = NSMenu()
-        menu.addItem(withTitle: "Dock Icon…", action: #selector(menuChooseIcon), keyEquivalent: "").target = self
-        menu.addItem(withTitle: "Default Icon", action: #selector(menuResetIcon), keyEquivalent: "").target = self
+        menu.addItem(withTitle: L("Dock Icon…"), action: #selector(menuChooseIcon), keyEquivalent: "").target = self
+        menu.addItem(withTitle: L("Default Icon"), action: #selector(menuResetIcon), keyEquivalent: "").target = self
         menu.addItem(.separator())
-        menu.addItem(withTitle: "Agenda", action: #selector(menuOpenTasks), keyEquivalent: "").target = self
-        menu.addItem(withTitle: "Settings…", action: #selector(menuSettings), keyEquivalent: "").target = self
-        menu.addItem(withTitle: "Hide Dock", action: #selector(menuHide), keyEquivalent: "").target = self
+        menu.addItem(withTitle: L("Agenda"), action: #selector(menuOpenTasks), keyEquivalent: "").target = self
+        menu.addItem(withTitle: L("Settings…"), action: #selector(menuSettings), keyEquivalent: "").target = self
+        menu.addItem(withTitle: L("Hide Dock"), action: #selector(menuHide), keyEquivalent: "").target = self
         NSMenu.popUpContextMenu(menu, with: event, for: ball)
     }
 
@@ -1916,13 +1963,24 @@ final class FloatingDockPanel: NSPanel, EscDismissable {
     @objc private func menuSettings() { Self.open(.settings, toggle: false, settingsTab: 5, pinned: false) }
     @objc private func menuHide() { Self.toggle() }
 
-    /// Entry icons: the card switches to that page and stays open.
+    /// Entry icons: the card switches to that page.
     @objc private func navTapped(_ sender: NSButton) {
         guard sender.tag < Page.allCases.count else { return }
+        let target = Page.allCases[sender.tag]
         // A page reached by clicking is not pinned: it goes away when the
-        // card loses the keyboard. A card pinned by a hotkey stays pinned.
-        present(Page.allCases[sender.tag], hold: heldOpen, focus: true)
+        // card loses the keyboard. A hotkey pins only the page it opened;
+        // clicking over to another page ends that.
+        present(target, hold: heldOpen && target == page, focus: true)
     }
+
+    /// Test hook: an entry icon clicked (through its action).
+    static func debugTapNav(_ target: Page) {
+        guard let shared, let button = shared.navButtons[target], let action = button.action else { return }
+        NSApp.sendAction(action, to: button.target, from: button)
+    }
+
+    /// Test hook: whether the card is pinned open.
+    static var debugHeld: Bool { shared?.heldOpen ?? false }
 
 
     @objc private func togglePlayback() { MediaObserver.shared.togglePlayPause() }
@@ -1934,9 +1992,10 @@ final class FloatingDockPanel: NSPanel, EscDismissable {
 
     private func showControlNote(_ reason: String) {
         let app = MediaObserver.shared.current?.appName ?? ""
-        let name = app.isEmpty ? "this player" : app
-        let text = reason.contains("Accessibility") ? "Allow Accessibility to control \(name)"
-            : reason.contains("Now Playing") ? "Open \(name) to control it" : "Not supported by \(name)"
+        let name = app.isEmpty ? L("this player") : app
+        // The reasons are in the interface language; these words appear in both.
+        let text = reason.contains(L("Accessibility")) ? L("Allow Accessibility to control %@", name)
+            : reason.contains(L("Now Playing")) ? L("Open %@ to control it", name) : L("Not supported by %@", name)
         controlNote = (text, Date().addingTimeInterval(4))
         artistLabel.toolTip = reason
         refresh()
@@ -1950,7 +2009,7 @@ final class FloatingDockPanel: NSPanel, EscDismissable {
 
     /// Home page to-do (double-click): the Agenda opens on that to-do.
     private func openTask(_ id: UUID) {
-        present(.tasks, hold: heldOpen, focus: true)
+        present(.tasks, hold: heldOpen && page == .tasks, focus: true)
         agendaPane.focus(taskID: id)
     }
 
@@ -2350,13 +2409,13 @@ final class DockTaskRow: NSView {
         super.init(frame: .zero)
         let checkbox = NSButton(checkboxWithTitle: "", target: self, action: #selector(markDone))
         checkbox.translatesAutoresizingMaskIntoConstraints = false
-        checkbox.toolTip = "Mark done"
+        checkbox.toolTip = L("Mark done")
         let label = NSTextField(labelWithString: task.title)
         label.font = .systemFont(ofSize: 12)
         label.textColor = .white
         label.lineBreakMode = .byTruncatingTail
         label.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
-        label.toolTip = (task.note.isEmpty ? task.title : "\(task.title)\n\(task.note)") + "\nDouble-click to open"
+        label.toolTip = (task.note.isEmpty ? task.title : "\(task.title)\n\(task.note)") + "\n" + L("Double-click to open")
         label.translatesAutoresizingMaskIntoConstraints = false
         let doubleClick = NSClickGestureRecognizer(target: self, action: #selector(openTask))
         doubleClick.numberOfClicksRequired = 2

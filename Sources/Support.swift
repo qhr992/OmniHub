@@ -43,7 +43,7 @@ final class Toast: NSPanel {
 
     static func show(_ text: String, duration: TimeInterval = 1.4) {
         current?.orderOut(nil)
-        let toast = Toast(text: text)
+        let toast = Toast(text: L(text))
         current = toast
         toast.alphaValue = 0
         toast.orderFrontRegardless()
@@ -92,5 +92,24 @@ extension NSScreen {
     /// The screen the mouse is on — where a summoned panel should appear.
     static var underMouse: NSScreen? {
         screens.first { $0.frame.contains(NSEvent.mouseLocation) } ?? main ?? screens.first
+    }
+}
+
+/// Quits and starts OmniHub again (after a language change).
+enum AppRelaunch {
+    static func now() {
+        // A shell outlives us: it waits until this process is gone, then
+        // opens the app again, so the new copy is not handed to the old one.
+        let task = Process()
+        task.executableURL = URL(fileURLWithPath: "/bin/sh")
+        task.arguments = ["-c", "while kill -0 \"$1\" 2>/dev/null; do sleep 0.2; done; /usr/bin/open \"$0\"",
+                          Bundle.main.bundlePath, String(ProcessInfo.processInfo.processIdentifier)]
+        do {
+            try task.run()
+        } catch {
+            Toast.show(L("Could not restart: %@", error.localizedDescription), duration: 2.5)
+            return
+        }
+        NSApp.terminate(nil)
     }
 }

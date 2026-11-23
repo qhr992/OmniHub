@@ -2,6 +2,8 @@
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
 <dict>
+	<key>CFBundleDevelopmentRegion</key>
+	<string>en</string>
 	<key>CFBundleDisplayName</key>
 	<string>OmniHub</string>
 	<key>CFBundleExecutable</key>
@@ -10,12 +12,17 @@
 	<string>AppIcon</string>
 	<key>CFBundleIdentifier</key>
 	<string>com.local.omnihub</string>
+	<key>CFBundleLocalizations</key>
+	<array>
+		<string>en</string>
+		<string>zh-Hans</string>
+	</array>
 	<key>CFBundleName</key>
 	<string>OmniHub</string>
 	<key>CFBundlePackageType</key>
 	<string>APPL</string>
 	<key>CFBundleShortVersionString</key>
-	<string>1.8.1</string>
+	<string>1.8.3</string>
 	<key>CFBundleURLTypes</key>
 	<array>
 		<dict>
@@ -28,21 +35,21 @@
 		</dict>
 	</array>
 	<key>CFBundleVersion</key>
-	<string>11</string>
+	<string>12</string>
 	<key>LSMinimumSystemVersion</key>
 	<string>14.0</string>
 	<key>LSUIElement</key>
 	<true/>
 	<key>NSCalendarsFullAccessUsageDescription</key>
-	<string>OmniHub 在「事项」页的月历里显示你日历中的安排（只读取，不修改）。</string>
+	<string>OmniHub shows your calendar events in the Agenda month view (read only, nothing is changed).</string>
 	<key>NSCalendarsUsageDescription</key>
-	<string>OmniHub 在「事项」页的月历里显示你日历中的安排（只读取，不修改）。</string>
+	<string>OmniHub shows your calendar events in the Agenda month view (read only, nothing is changed).</string>
 	<key>NSDesktopFolderUsageDescription</key>
-	<string>OmniHub 需要访问桌面以保存截图文件。</string>
+	<string>OmniHub saves screenshots to the Desktop when you choose it.</string>
 	<key>NSDocumentsFolderUsageDescription</key>
-	<string>OmniHub 需要访问文稿目录以保存截图文件。</string>
+	<string>OmniHub saves screenshots to Documents when you choose it.</string>
 	<key>NSDownloadsFolderUsageDescription</key>
-	<string>OmniHub 需要访问下载目录以保存截图和从服务器下载的文件。</string>
+	<string>OmniHub saves screenshots and files downloaded from servers to Downloads.</string>
 	<key>NSHighResolutionCapable</key>
 	<true/>
 	<key>NSHumanReadableCopyright</key>

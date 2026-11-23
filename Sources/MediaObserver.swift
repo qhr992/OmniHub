@@ -413,8 +413,8 @@ final class MediaObserver {
     /// Why playback commands cannot reach the shown player, if they cannot.
     static func followedReason(_ item: NowPlaying?) -> String? {
         guard let item, item.isFollowed, !item.isMusic else { return nil }
-        let app = item.appName.isEmpty ? "This player" : item.appName
-        return "\(app) takes no playback commands from other apps while another player holds Now Playing. Open \(app) to control it."
+        let app = item.appName.isEmpty ? L("This player") : item.appName
+        return L("%1$@ takes no playback commands from other apps while another player holds Now Playing. Open %1$@ to control it.", app)
     }
 
     /// Commands for a followed player go nowhere (or to the wrong app):
@@ -467,14 +467,14 @@ final class MediaObserver {
             return
         }
         if blockedByFollow() { return }
-        let app = item.appName.isEmpty ? "The player" : item.appName
+        let app = item.appName.isEmpty ? L("The player") : item.appName
         guard PlayerMenu.isTrusted else {
-            unavailable("\(app) does not hold Now Playing. Allow Accessibility (Settings → General) so OmniHub can use its menu.")
+            unavailable(L("%@ does not hold Now Playing. Allow Accessibility (Settings → General) so OmniHub can use its menu.", app))
             return
         }
         let scan = menuEntries(for: item, rescan: true)
         guard let entry = PlayerMenu.transportTarget(scan.entries, action), PlayerMenu.press(entry, in: scan) else {
-            unavailable("\(app) does not hold Now Playing and has no menu item for this.")
+            unavailable(L("%@ does not hold Now Playing and has no menu item for this.", app))
             return
         }
         debugTransportHook?(entry.title)
@@ -487,10 +487,10 @@ final class MediaObserver {
             send("pause", code: 1)
             return
         }
-        func name(_ pid: pid_t) -> String { Self.owningApp(of: pid)?.localizedName ?? "The other player" }
-        let holder = item.nowPlayingPID > 0 ? name(item.nowPlayingPID) : "another app"
+        func name(_ pid: pid_t) -> String { Self.owningApp(of: pid)?.localizedName ?? L("The other player") }
+        let holder = item.nowPlayingPID > 0 ? name(item.nowPlayingPID) : L("another app")
         NotificationCenter.default.post(name: Self.controlUnavailable,
-                                        object: "\(name(pid)) can't be paused from OmniHub while \(holder) holds Now Playing. Pause it in its own window.")
+                                        object: L("%@ can't be paused from OmniHub while %@ holds Now Playing. Pause it in its own window.", name(pid), holder))
     }
 
     /// Test hook: the menu item a transport command pressed.
@@ -557,21 +557,21 @@ final class MediaObserver {
     }
 
     func route(_ control: Control, for item: NowPlaying? = nil) -> Route {
-        guard let item = item ?? current else { return .unavailable("Nothing is playing") }
+        guard let item = item ?? current else { return .unavailable(L("Nothing is playing")) }
         if let reason = Self.followedReason(item) { return .unavailable(reason) }
         let codes = control == .like ? [Self.commandLike] : [Self.commandShuffle, Self.commandRepeat]
         // Not reported (direct fallback, older bridge): just try.
         guard let commands = item.commands else { return .remote }
         if codes.contains(where: commands.contains) { return .remote }
-        let app = item.appName.isEmpty ? "This player" : item.appName
+        let app = item.appName.isEmpty ? L("This player") : item.appName
         guard PlayerMenu.isTrusted else {
-            return .unavailable("\(app) takes only play / pause from other apps. Allow Accessibility (Settings → General) to use its menu instead.")
+            return .unavailable(L("%@ takes only play / pause from other apps. Allow Accessibility (Settings → General) to use its menu instead.", app))
         }
         let entries = menuEntries(for: item).entries
         let found = control == .like
             ? entries.contains { PlayerMenu.isLike($0.title) || PlayerMenu.isUnlike($0.title) }
             : entries.contains { PlayerMenu.mode(of: $0.title) != nil }
-        return found ? .menu : .unavailable("\(app) does not accept this from other apps and has no menu item for it.")
+        return found ? .menu : .unavailable(L("%@ does not accept this from other apps and has no menu item for it.", app))
     }
 
     /// Players whose menu items carry no check mark (NetEase) cannot be read
@@ -638,7 +638,7 @@ final class MediaObserver {
         case .menu:
             let scan = menuEntries(for: playing, rescan: true)
             guard let target = PlayerMenu.modeTarget(scan.entries, next: next), PlayerMenu.press(target, in: scan) else {
-                unavailable("Could not find the \(next.rawValue) item in the player's menu.")
+                unavailable(L("Could not find the %@ item in the player's menu.", next.rawValue))
                 return
             }
             if PlayerMenu.currentMode(scan.entries) == nil { Self.remember(next, for: playing.bundleID) }
@@ -664,7 +664,7 @@ final class MediaObserver {
             let scan = menuEntries(for: playing, rescan: true)
             guard let target = PlayerMenu.likeTarget(scan.entries, liked: playing.liked),
                   PlayerMenu.press(target, in: scan) else {
-                unavailable("Could not find a Like item in the player's menu.")
+                unavailable(L("Could not find a Like item in the player's menu."))
                 return
             }
             refreshMenuSoon()
@@ -737,8 +737,8 @@ final class MediaObserver {
         guard var playing = current else { return }
         // 24 = seek to playback position (MRMediaRemoteCommand).
         if let commands = playing.commands, !commands.contains(24) {
-            let app = playing.appName.isEmpty ? "this player" : playing.appName
-            NotificationCenter.default.post(name: Self.controlUnavailable, object: "Seeking is not supported by \(app)")
+            let app = playing.appName.isEmpty ? L("this player") : playing.appName
+            NotificationCenter.default.post(name: Self.controlUnavailable, object: L("Seeking is not supported by %@", app))
             return
         }
         var target = max(0, seconds)

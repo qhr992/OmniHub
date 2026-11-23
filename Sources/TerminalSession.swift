@@ -12,7 +12,7 @@ final class PortForward {
     let targetPort: Int
     /// Proxy the forward's own connection goes through ("" = shares the tab's connection).
     let proxyID: String
-    var state = "Starting…"
+    var state = L("Starting…")
     var active = false
     var process: Process?
 
@@ -34,9 +34,9 @@ final class PortForward {
     var summary: String {
         let listen = "\(bind.isEmpty ? "127.0.0.1" : bind):\(listenPort)"
         switch kind {
-        case "D": return "SOCKS  local \(listen)"
-        case "R": return "server \(listen) → \(targetHost):\(targetPort) (local side)"
-        default: return "local \(listen) → \(targetHost):\(targetPort) (server side)"
+        case "D": return L("SOCKS  local %@", listen)
+        case "R": return L("server %@ → %@:%@ (local side)", listen, targetHost, String(targetPort))
+        default: return L("local %@ → %@:%@ (server side)", listen, targetHost, String(targetPort))
         }
     }
 }
@@ -51,6 +51,7 @@ final class TerminalSession {
     let target: RemoteTarget?
     let scrollView = NSScrollView()
     private let textView = TerminalTextView(frame: NSRect(x: 0, y: 0, width: 780, height: 380))
+    private lazy var cursor = TerminalCursor(textView: textView)
     private let buffer = TerminalBuffer()
     private var masterFD: Int32 = -1
     private var childPID: pid_t = 0
@@ -126,6 +127,9 @@ final class TerminalSession {
         textView.isIncrementalSearchingEnabled = true
         textView.onInput = { [weak self] data in self?.write(data) }
         textView.onAction = { [weak self] action in self?.perform(action) ?? false }
+        // The first prompt may be drawn before the view is on the (dark) card.
+        textView.onAppearanceChange = { [weak self] in self?.render() }
+        textView.onFocusChange = { [weak self] in self?.cursor.focusChanged() }
 
         scrollView.documentView = textView
         scrollView.hasVerticalScroller = true
@@ -354,7 +358,7 @@ final class TerminalSession {
 
     /// A line from OmniHub itself, shown in the terminal.
     private func notice(_ text: String) {
-        buffer.feed(Array("\r\n[OmniHub] \(text)\r\n".utf8))
+        buffer.feed(Array("\r\n[OmniHub] \(L(text))\r\n".utf8))
         render()
     }
 
@@ -459,13 +463,13 @@ final class TerminalSession {
             // Rides on the tab's own connection.
             Subprocess.run(target.muxArguments(["-O", "forward"] + forward.spec + [target.host])) { [weak self] result in
                 forward.active = result.ok
-                forward.state = result.ok ? "Active" : "Failed: \(result.message)"
+                forward.state = result.ok ? L("Active") : L("Failed: %@", result.message)
                 self?.onForwardsChange?()
             }
             return
         }
         guard let (arguments, environment) = target.standaloneForwardArguments(spec: forward.spec, proxyID: proxyID) else {
-            forward.state = "Failed: forwarding through a proxy needs a saved connection"
+            forward.state = L("Failed: forwarding through a proxy needs a saved connection")
             onForwardsChange?()
             return
         }
@@ -473,7 +477,7 @@ final class TerminalSession {
             forward.process = nil
             forward.active = false
             if self?.forwards.contains(where: { $0 === forward }) == true {
-                forward.state = "Stopped: \(result.message)"
+                forward.state = L("Stopped: %@", result.message)
                 self?.onForwardsChange?()
             }
         }
@@ -481,7 +485,7 @@ final class TerminalSession {
         DispatchQueue.main.asyncAfter(deadline: .now() + 2.5) { [weak self] in
             guard forward.process?.isRunning == true else { return }
             forward.active = true
-            forward.state = "Active (via proxy)"
+            forward.state = L("Active (via proxy)")
             self?.onForwardsChange?()
         }
     }
@@ -545,18 +549,21 @@ final class TerminalSession {
                             length: max(0, storage.length - offset))
         storage.beginEditing()
         storage.replaceCharacters(in: range, with: NSAttributedString(string: text, attributes: attributes))
-        if let cursorRange, cursorRange.upperBound <= storage.length {
-            storage.addAttributes([.backgroundColor: NSColor.textColor.withAlphaComponent(0.55),
-                                   .foregroundColor: NSColor.textBackgroundColor],
-                                  range: cursorRange)
-        }
         storage.endEditing()
+        cursor.move(to: cursorRange)
 
         renderedLengths.removeSubrange(from...)
         renderedLengths.append(contentsOf: lengths)
         lastCursorRow = cursorRow
         textView.scrollToEndOfDocument(nil)
     }
+
+    /// Test hooks: the cursor cell's background as drawn (sRGB); start a
+    /// new breathing cycle; tell the cursor the focus changed.
+    var debugCursorColor: NSColor? { cursor.currentColor }
+    var debugCursorState: String { cursor.debugState }
+    func debugRestartCursor() { cursor.move(to: cursor.range) }
+    func debugCursorFocusChanged() { cursor.focusChanged() }
 
     /// The font size changed: redraw everything and tell the shell the new
     /// number of columns.
@@ -599,18 +606,48 @@ final class TerminalSession {
 final class TerminalTextView: NSTextView {
     var onInput: ((Data) -> Void)?
     var onAction: ((TerminalAction) -> Bool)?
+    var onAppearanceChange: (() -> Void)?
+    /// The view gained or lost the keyboard (its own focus, or its window's).
+    var onFocusChange: (() -> Void)?
+    private var keyObservers: [NSObjectProtocol] = []
 
     override var acceptsFirstResponder: Bool { true }
+
+    override func viewDidChangeEffectiveAppearance() {
+        super.viewDidChangeEffectiveAppearance()
+        onAppearanceChange?()
+    }
+
+    override func viewDidMoveToWindow() {
+        super.viewDidMoveToWindow()
+        keyObservers.forEach(NotificationCenter.default.removeObserver)
+        keyObservers = []
+        if let window {
+            keyObservers = [NSWindow.didBecomeKeyNotification, NSWindow.didResignKeyNotification].map { name in
+                NotificationCenter.default.addObserver(forName: name, object: window, queue: .main) { [weak self] _ in
+                    self?.focusChanged()
+                }
+            }
+        }
+        focusChanged()
+    }
+
+    /// Reported once the responder change has settled.
+    private func focusChanged() {
+        DispatchQueue.main.async { [weak self] in self?.onFocusChange?() }
+    }
 
     override func becomeFirstResponder() -> Bool {
         let accepted = super.becomeFirstResponder()
         TerminalFocus.refresh()
+        focusChanged()
         return accepted
     }
 
     override func resignFirstResponder() -> Bool {
         let accepted = super.resignFirstResponder()
         TerminalFocus.refresh()
+        focusChanged()
         return accepted
     }
 

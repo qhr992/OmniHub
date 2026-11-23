@@ -171,9 +171,9 @@ final class SnipSession {
         do {
             try png.write(to: url)
             SaveFolder.remember(url)
-            Toast.show("Saved: \(url.lastPathComponent)")
+            Toast.show(L("Saved: %@", url.lastPathComponent))
         } catch {
-            Toast.show("Save failed: \(error.localizedDescription)", duration: 2.5)
+            Toast.show(L("Save failed: %@", error.localizedDescription), duration: 2.5)
         }
     }
 
@@ -255,7 +255,7 @@ final class OverlayView: NSView {
         field.drawsBackground = true
         field.isBordered = false
         field.focusRingType = .none
-        field.placeholderString = "Type, Return to confirm"
+        field.placeholderString = L("Type, Return to confirm")
         field.cell?.sendsActionOnEndEditing = true
         field.target = self
         field.action = #selector(textEntryDone)

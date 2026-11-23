@@ -1,0 +1,5 @@
+"NSCalendarsUsageDescription" = "OmniHub 在「事项」页的月历里显示你日历中的安排（只读取，不修改）。";
+"NSCalendarsFullAccessUsageDescription" = "OmniHub 在「事项」页的月历里显示你日历中的安排（只读取，不修改）。";
+"NSDesktopFolderUsageDescription" = "OmniHub 需要访问桌面以保存截图文件。";
+"NSDocumentsFolderUsageDescription" = "OmniHub 需要访问文稿目录以保存截图文件。";
+"NSDownloadsFolderUsageDescription" = "OmniHub 需要访问下载目录以保存截图和从服务器下载的文件。";

@@ -25,12 +25,12 @@ enum AnnotationTool: Int, CaseIterable {
 
     var title: String {
         switch self {
-        case .rectangle: return "Rectangle"
-        case .ellipse:   return "Ellipse"
-        case .arrow:     return "Arrow"
-        case .pen:       return "Pen"
-        case .text:      return "Text"
-        case .mosaic:    return "Mosaic"
+        case .rectangle: return L("Rectangle")
+        case .ellipse:   return L("Ellipse")
+        case .arrow:     return L("Arrow")
+        case .pen:       return L("Pen")
+        case .text:      return L("Text")
+        case .mosaic:    return L("Mosaic")
         }
     }
 }

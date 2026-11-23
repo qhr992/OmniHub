@@ -12,24 +12,24 @@ enum TerminalAction: String, CaseIterable {
 
     var title: String {
         switch self {
-        case .newTab: return "New Tab"
-        case .closeTab: return "Close Tab"
-        case .nextTab: return "Next Tab"
-        case .previousTab: return "Previous Tab"
-        case .clear: return "Clear"
-        case .copy: return "Copy"
-        case .paste: return "Paste"
-        case .selectAll: return "Select All"
-        case .find: return "Find"
-        case .biggerText: return "Bigger Text"
-        case .smallerText: return "Smaller Text"
-        case .defaultText: return "Default Text Size"
-        case .scrollToTop: return "Scroll to Top"
-        case .scrollToBottom: return "Scroll to Bottom"
-        case .pageUp: return "Page Up"
-        case .pageDown: return "Page Down"
-        case .connections: return "Connections"
-        default: return "Tab \(rawValue.dropFirst(3))"
+        case .newTab: return L("New Tab")
+        case .closeTab: return L("Close Tab")
+        case .nextTab: return L("Next Tab")
+        case .previousTab: return L("Previous Tab")
+        case .clear: return L("Clear")
+        case .copy: return L("Copy")
+        case .paste: return L("Paste")
+        case .selectAll: return L("Select All")
+        case .find: return L("Find")
+        case .biggerText: return L("Bigger Text")
+        case .smallerText: return L("Smaller Text")
+        case .defaultText: return L("Default Text Size")
+        case .scrollToTop: return L("Scroll to Top")
+        case .scrollToBottom: return L("Scroll to Bottom")
+        case .pageUp: return L("Page Up")
+        case .pageDown: return L("Page Down")
+        case .connections: return L("Connections")
+        default: return L("Tab %@", String(rawValue.dropFirst(3)))
         }
     }
 
@@ -231,7 +231,7 @@ final class TerminalKeymap {
 
 /// Click, then press the new shortcut for a terminal action. ⌫ clears it,
 /// Esc cancels.
-final class LocalKeyRecorder: NSButton {
+final class LocalKeyRecorder: FocusButton {
     private let terminalAction: TerminalAction
     private(set) var isRecording = false
 
@@ -256,7 +256,7 @@ final class LocalKeyRecorder: NSButton {
     @objc private func refresh() {
         guard !isRecording else { return }
         let combos = TerminalKeymap.shared.combos(for: terminalAction)
-        title = combos.isEmpty ? "Click to record" : combos.map(\.display).joined(separator: " or ")
+        title = combos.isEmpty ? L("Click to record") : combos.map(\.display).joined(separator: L(" or "))
     }
 
     private var monitor: Any?
@@ -265,7 +265,7 @@ final class LocalKeyRecorder: NSButton {
     @objc private func begin() {
         guard !isRecording else { return }
         isRecording = true
-        title = "Press shortcut…"
+        title = L("Press shortcut…")
         NSApp.activate(ignoringOtherApps: true)
         window?.makeKey()
         window?.makeFirstResponder(self)
@@ -305,7 +305,7 @@ final class LocalKeyRecorder: NSButton {
         // A bare key would swallow what is typed into the shell.
         guard combo.flags.contains(.command) || combo.flags.contains(.control) else {
             NSSound.beep()
-            title = "Needs ⌘ or ⌃"
+            title = L("Needs ⌘ or ⌃")
             return
         }
         isRecording = false

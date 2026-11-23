@@ -3,9 +3,9 @@ import AppKit
 /// Shelf page: files dropped on the dock ball (or onto this page). Drag a row
 /// out to copy the file somewhere else; double-click opens it.
 final class ShelfPane: NSView, DockPage {
-    private let titleLabel = NSTextField(labelWithString: "Shelf")
+    private let titleLabel = NSTextField(labelWithString: L("Shelf"))
     private let countLabel = NSTextField(labelWithString: "")
-    private let clearButton = NSButton(title: "Clear All", target: nil, action: nil)
+    private let clearButton = NSButton(title: L("Clear All"), target: nil, action: nil)
     private let rows = NSStackView()
     private let scroll = NSScrollView()
     private let empty = NSStackView()
@@ -107,21 +107,22 @@ final class ShelfPane: NSView, DockPage {
         }
         let total = store.items.reduce(Int64(0)) { $0 + $1.size }
         countLabel.stringValue = store.items.isEmpty ? ""
-            : "\(store.items.count) item\(store.items.count == 1 ? "" : "s") · "
+            : (store.items.count == 1 ? L("1 item") : L("%ld items", store.items.count)) + " · "
                 + ByteCountFormatter.string(fromByteCount: total, countStyle: .file)
         clearButton.isHidden = store.items.isEmpty
         let days = ShelfStore.retentionDays
-        emptyText.stringValue = "Drop files on the dock ball (or here).\nThey stay \(days) day\(days == 1 ? "" : "s"), then are cleared."
+        emptyText.stringValue = days == 1 ? L("Drop files on the dock ball (or here).\nThey stay 1 day, then are cleared.")
+            : L("Drop files on the dock ball (or here).\nThey stay %ld days, then are cleared.", days)
         empty.isHidden = !store.items.isEmpty
         scroll.isHidden = store.items.isEmpty
     }
 
     @objc private func clearAll() {
         let alert = NSAlert()
-        alert.messageText = "Clear the Shelf?"
-        alert.informativeText = "All \(ShelfStore.shared.items.count) items are deleted from the Shelf."
-        alert.addButton(withTitle: "Clear All")
-        alert.addButton(withTitle: "Cancel")
+        alert.messageText = L("Clear the Shelf?")
+        alert.informativeText = L("All %ld items are deleted from the Shelf.", ShelfStore.shared.items.count)
+        alert.addButton(withTitle: L("Clear All"))
+        alert.addButton(withTitle: L("Cancel"))
         guard alert.runModal() == .alertFirstButtonReturn else { return }
         ShelfStore.shared.removeAll()
     }
@@ -162,9 +163,9 @@ final class ShelfPane: NSView, DockPage {
     static func add(_ urls: [URL]) {
         ShelfStore.shared.add(urls) { added, failed in
             if failed.isEmpty {
-                Toast.show(added == 1 ? "Added to Shelf" : "Added \(added) to Shelf")
+                Toast.show(added == 1 ? L("Added to Shelf") : L("Added %ld to Shelf", added))
             } else {
-                Toast.show("Could not add: " + failed.joined(separator: ", "), duration: 2.5)
+                Toast.show(L("Could not add: %@", failed.joined(separator: ", ")), duration: 2.5)
             }
         }
     }
@@ -234,7 +235,7 @@ final class ShelfRowView: NSView, NSDraggingSource {
             actions.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -8),
             actions.centerYAnchor.constraint(equalTo: centerYAnchor)
         ])
-        toolTip = item.name + "\nDouble-click to open · drag out to copy"
+        toolTip = item.name + "\n" + L("Double-click to open · drag out to copy")
         menu = makeMenu()
     }
 
@@ -244,20 +245,21 @@ final class ShelfRowView: NSView, NSDraggingSource {
     var debugText: String { "\(item.name) | \(detail.stringValue)" }
 
     static func detailText(_ item: ShelfItem, now: Date = Date()) -> String {
-        let size = item.isDirectory ? "Folder · " + ByteCountFormatter.string(fromByteCount: item.size, countStyle: .file)
+        let size = item.isDirectory ? L("Folder") + " · " + ByteCountFormatter.string(fromByteCount: item.size, countStyle: .file)
             : ByteCountFormatter.string(fromByteCount: item.size, countStyle: .file)
         let added = Calendar.current.isDateInToday(item.addedAt)
             ? item.addedAt.formatted(date: .omitted, time: .shortened)
             : item.addedAt.formatted(.dateTime.month(.abbreviated).day())
         let left = ShelfStore.shared.expiry(of: item).timeIntervalSince(now)
         let leftText: String
-        if left < 3600 { leftText = "clears soon" }
-        else if left < 86_400 { leftText = "\(Int((left / 3600).rounded(.up)))h left" }
-        else { leftText = "\(Int((left / 86_400).rounded(.up)))d left" }
-        return "\(size) · Added \(added) · \(leftText)"
+        if left < 3600 { leftText = L("clears soon") }
+        else if left < 86_400 { leftText = L("%ldh left", Int((left / 3600).rounded(.up))) }
+        else { leftText = L("%ldd left", Int((left / 86_400).rounded(.up))) }
+        return "\(size) · " + L("Added %@", added) + " · \(leftText)"
     }
 
     private static func iconButton(_ symbol: String, _ tip: String, _ target: AnyObject, _ action: Selector) -> NSButton {
+        let tip = L(tip)
         let button = NSButton(image: NSImage(systemSymbolName: symbol, accessibilityDescription: tip) ?? NSImage(),
                               target: target, action: action)
         button.isBordered = false
@@ -270,11 +272,11 @@ final class ShelfRowView: NSView, NSDraggingSource {
 
     private func makeMenu() -> NSMenu {
         let menu = NSMenu()
-        menu.addItem(withTitle: "Open", action: #selector(openTapped), keyEquivalent: "").target = self
-        menu.addItem(withTitle: "Show in Finder", action: #selector(revealTapped), keyEquivalent: "").target = self
-        menu.addItem(withTitle: "Copy", action: #selector(copyTapped), keyEquivalent: "").target = self
+        menu.addItem(withTitle: L("Open"), action: #selector(openTapped), keyEquivalent: "").target = self
+        menu.addItem(withTitle: L("Show in Finder"), action: #selector(revealTapped), keyEquivalent: "").target = self
+        menu.addItem(withTitle: L("Copy"), action: #selector(copyTapped), keyEquivalent: "").target = self
         menu.addItem(.separator())
-        menu.addItem(withTitle: "Remove from Shelf", action: #selector(removeTapped), keyEquivalent: "").target = self
+        menu.addItem(withTitle: L("Remove from Shelf"), action: #selector(removeTapped), keyEquivalent: "").target = self
         return menu
     }
 

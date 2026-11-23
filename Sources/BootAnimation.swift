@@ -71,7 +71,7 @@ final class BootAnimation {
         layer.autoresizingMask = [.layerWidthSizable, .layerHeightSizable]
         view.layer?.addSublayer(layer)
 
-        let hint = NSTextField(labelWithString: "Click to skip")
+        let hint = NSTextField(labelWithString: L("Click to skip"))
         hint.font = .systemFont(ofSize: 11)
         hint.textColor = NSColor(srgbRed: 0.12, green: 0.2, blue: 0.21, alpha: 0.5)
         hint.sizeToFit()

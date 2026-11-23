@@ -65,19 +65,26 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
         // `--askpass-selftest`: a vault password must only reach an ssh that
         // OmniHub itself started, never a process that just sets the env var.
+        if args.contains("--vault-selftest") {
+            VaultSelfTest.run()
+        }
+
         if args.contains("--askpass-selftest") {
+            // A Keychain service of its own: the real vault is not touched.
+            let service = "com.local.omnihub.vault.askpass-selftest"
+            Vault.service = service
             let id = "askpass-selftest-\(getpid())"
             _ = Vault.set("leak-check-42", for: id)
             let process = Process()
             process.executableURL = URL(fileURLWithPath: RemoteTarget.executable)
             process.arguments = ["Password:"]
-            process.environment = ["OMNIHUB_ASKPASS_SECRET": id]
+            process.environment = ["OMNIHUB_ASKPASS_SECRET": id, "OMNIHUB_VAULT_SERVICE": service]
             let pipe = Pipe()
             process.standardOutput = pipe
             try? process.run()
             process.waitUntilExit()
             let output = String(decoding: pipe.fileHandleForReading.readDataToEndOfFile(), as: UTF8.self)
-            Vault.remove(id)
+            Vault.debugDeleteAll()
             let leaked = output.contains("leak-check-42")
             print(leaked ? "FAIL  a process that is not OmniHub's ssh got the vault password (exit \(process.terminationStatus))"
                          : "PASS  askpass refuses a caller that is not an ssh started by OmniHub (exit \(process.terminationStatus))")
@@ -91,6 +98,16 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
         if args.contains("--dock-selftest") {
             DockSelfTest.run()
+            return
+        }
+
+        if let index = args.firstIndex(of: "--l10n-selftest") {
+            let folder = index + 1 < args.count ? URL(fileURLWithPath: args[index + 1], isDirectory: true) : nil
+            L10nSelfTest.run(pictures: folder)
+            return
+        }
+        if args.contains("--tab-selftest") {
+            TabSelfTest.run()
             return
         }
 
@@ -787,6 +804,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
         out.append("-- dock --")
         out.append(FloatingDockPanel.debugState)
+        out.append(Vault.debugSummary)
+        if let session = FloatingDockPanel.terminalIfCreated?.activeSession {
+            out.append("terminal \(session.debugCursorState)")
+        }
         for screen in NSScreen.screens {
             out.append("screen frame=\(screen.frame) visible=\(screen.visibleFrame) main=\(screen == NSScreen.main)")
         }
@@ -837,14 +858,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         let main = NSMenu()
         let editItem = NSMenuItem()
         let edit = NSMenu(title: "Edit")
-        edit.addItem(withTitle: "Undo", action: Selector(("undo:")), keyEquivalent: "z")
-        let redo = edit.addItem(withTitle: "Redo", action: Selector(("redo:")), keyEquivalent: "z")
+        edit.addItem(withTitle: L("Undo"), action: Selector(("undo:")), keyEquivalent: "z")
+        let redo = edit.addItem(withTitle: L("Redo"), action: Selector(("redo:")), keyEquivalent: "z")
         redo.keyEquivalentModifierMask = [.command, .shift]
         edit.addItem(.separator())
-        edit.addItem(withTitle: "Cut", action: #selector(NSText.cut(_:)), keyEquivalent: "x")
-        edit.addItem(withTitle: "Copy", action: #selector(NSText.copy(_:)), keyEquivalent: "c")
-        edit.addItem(withTitle: "Paste", action: #selector(NSText.paste(_:)), keyEquivalent: "v")
-        edit.addItem(withTitle: "Select All", action: #selector(NSText.selectAll(_:)), keyEquivalent: "a")
+        edit.addItem(withTitle: L("Cut"), action: #selector(NSText.cut(_:)), keyEquivalent: "x")
+        edit.addItem(withTitle: L("Copy"), action: #selector(NSText.copy(_:)), keyEquivalent: "c")
+        edit.addItem(withTitle: L("Paste"), action: #selector(NSText.paste(_:)), keyEquivalent: "v")
+        edit.addItem(withTitle: L("Select All"), action: #selector(NSText.selectAll(_:)), keyEquivalent: "a")
         editItem.submenu = edit
         main.addItem(editItem)
         NSApp.mainMenu = main
@@ -887,7 +908,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     @discardableResult
     private func addItem(_ menu: NSMenu, _ title: String, _ shortcut: String, _ action: Selector) -> NSMenuItem {
-        let item = NSMenuItem(title: shortcut.isEmpty ? title : "\(title)   \(shortcut)",
+        let item = NSMenuItem(title: shortcut.isEmpty ? L(title) : "\(L(title))   \(shortcut)",
                               action: action,
                               keyEquivalent: "")
         item.target = self
@@ -930,10 +951,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         guard force || ScreenCapture.isTrusted() else {
             ScreenCapture.requestAccess()
             let alert = NSAlert()
-            alert.messageText = "Screen Recording permission needed"
-            alert.informativeText = "System Settings → Privacy & Security → Screen Recording: enable OmniHub, then restart it.\n\nIf it is already enabled, the app was updated: remove it from the list (−) and add it again."
-            alert.addButton(withTitle: "Open System Settings")
-            alert.addButton(withTitle: "Cancel")
+            alert.messageText = L("Screen Recording permission needed")
+            alert.informativeText = L("System Settings → Privacy & Security → Screen Recording: enable OmniHub, then restart it.\n\nIf it is already enabled, the app was updated: remove it from the list (−) and add it again.")
+            alert.addButton(withTitle: L("Open System Settings"))
+            alert.addButton(withTitle: L("Cancel"))
             NSApp.activate(ignoringOtherApps: true)
             if alert.runModal() == .alertFirstButtonReturn {
                 ScreenCapture.openPrivacySettings()
@@ -950,7 +971,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             guard !captures.isEmpty else {
                 self.isSnipActive = false
                 self.statusItem?.button?.appearsDisabled = false
-                Toast.show("Screenshot failed: nothing captured", duration: 2)
+                Toast.show(L("Screenshot failed: nothing captured"), duration: 2)
                 return
             }
             let controller = OverlayController(captures: captures, autoScroll: autoScroll)
@@ -988,6 +1009,7 @@ private struct PinDTOProbe: Codable {
 
 // Helper modes (ssh proxy, Telnet, askpass) run without starting the app.
 NetHelpers.runIfRequested()
+AppLanguage.start(arguments: CommandLine.arguments)
 
 let application = NSApplication.shared
 let delegate = AppDelegate()

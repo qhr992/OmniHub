@@ -23,7 +23,7 @@ enum Holidays {
         let qingming = Int(Double(short) * 0.2422 + 4.81) - short / 4
 
         var list: [Holiday] = []
-        func add(_ name: String, _ date: Date?) { if let date { list.append(Holiday(name: name, date: date)) } }
+        func add(_ name: String, _ date: Date?) { if let date { list.append(Holiday(name: L(name), date: date)) } }
         add("New Year", day(1, 1))
         add("Spring Festival", lunar(month: 1, day: 1, inYear: year))
         add("Qingming", day(4, qingming))
@@ -66,6 +66,6 @@ enum Holidays {
     /// "49d to New Year" / "New Year today".
     static func countdownText(from today: Date = Date()) -> String {
         guard let (holiday, days) = next(from: today) else { return "" }
-        return days == 0 ? "\(holiday.name) today" : "\(days)d to \(holiday.name)"
+        return days == 0 ? L("%@ today", holiday.name) : L("%ldd to %@", days, holiday.name)
     }
 }

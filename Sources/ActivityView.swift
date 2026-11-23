@@ -71,7 +71,7 @@ final class ActivityView: NSView {
         }
         debugRows = []
         if let tile = tiles["cpu"] {
-            tile.update(value: percent(stats.cpu), detail: "\(ProcessInfo.processInfo.activeProcessorCount) cores", samples: history.cpu, ceiling: 1)
+            tile.update(value: percent(stats.cpu), detail: L("%ld cores", ProcessInfo.processInfo.activeProcessorCount), samples: history.cpu, ceiling: 1)
             debugRows.append("CPU: \(percent(stats.cpu)) samples=\(history.cpu.count)")
         }
         if let tile = tiles["gpu"] {
@@ -87,7 +87,7 @@ final class ActivityView: NSView {
         }
         if let tile = tiles["disk"] {
             let fraction = stats.diskTotal > 0 ? Double(stats.diskUsed) / Double(stats.diskTotal) : nil
-            let detail = "R \(SystemStats.rate(stats.diskRead)) · W \(SystemStats.rate(stats.diskWrite))"
+            let detail = L("R %@ · W %@", SystemStats.rate(stats.diskRead), SystemStats.rate(stats.diskWrite))
             // The chart is read + write throughput, scaled to its own peak.
             tile.update(value: percent(fraction), detail: detail, samples: history.diskIO, ceiling: nil)
             debugRows.append("Disk: \(percent(fraction)) \(detail) samples=\(history.diskIO.count)")
@@ -96,7 +96,7 @@ final class ActivityView: NSView {
             ipValues["local\(index)"]?.stringValue = entry.address
             debugRows.append("IP · \(entry.name): \(entry.address)")
         }
-        ipValues["public"]?.stringValue = stats.publicIP ?? "Looking up…"
+        ipValues["public"]?.stringValue = stats.publicIP ?? L("Looking up…")
     }
 
     private var ipValues: [String: NSTextField] = [:]
@@ -114,7 +114,7 @@ final class ActivityView: NSView {
         let gap: CGFloat = 8
         let tileWidth = (width - gap * CGFloat(perRow - 1)) / CGFloat(perRow)
         let titles = ["cpu": ("cpu", "CPU"), "gpu": ("cube.transparent", "GPU"),
-                      "memory": ("memorychip", "Memory"), "disk": ("internaldrive", "Disk")]
+                      "memory": ("memorychip", L("Memory")), "disk": ("internaldrive", L("Disk"))]
 
         var index = 0
         while index < metrics.count {
@@ -134,16 +134,16 @@ final class ActivityView: NSView {
 
         if Prefs.bool("activity.ip", true) {
             let stats = SystemStats.shared.snapshot
-            if stats.localIPs.isEmpty { addText("network", "IP", "Offline", key: "none") }
+            if stats.localIPs.isEmpty { addText("network", "IP", L("Offline"), key: "none") }
             for (index, entry) in stats.localIPs.enumerated() {
                 addText("network", "IP · \(entry.name)", entry.address, key: "local\(index)")
             }
             if Prefs.bool("activity.publicIP", false) {
-                addText("globe", "Public IP", stats.publicIP ?? "Looking up…", key: "public")
+                addText("globe", L("Public IP"), stats.publicIP ?? L("Looking up…"), key: "public")
             }
         }
         if stack.arrangedSubviews.isEmpty {
-            let empty = NSTextField(labelWithString: "Everything is switched off in Settings")
+            let empty = NSTextField(labelWithString: L("Everything is switched off in Settings"))
             empty.font = .systemFont(ofSize: 12)
             empty.textColor = NSColor(white: 1, alpha: 0.5)
             stack.addArrangedSubview(empty)

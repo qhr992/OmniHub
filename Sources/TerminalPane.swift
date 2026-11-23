@@ -79,6 +79,7 @@ final class TerminalPane: NSView, DockPage {
     }
 
     func terminateAll() { sessions.forEach { $0.terminate() } }
+    var openSessionCount: Int { sessions.count }
 
     // MARK: Debug hooks (headless verification)
 
@@ -101,6 +102,7 @@ final class TerminalPane: NSView, DockPage {
 
     private func iconButton(_ symbol: String, _ tooltip: String, _ action: Selector, size: CGFloat = 12) -> NSButton {
         let config = NSImage.SymbolConfiguration(pointSize: size, weight: .medium)
+        let tooltip = L(tooltip)
         let image = NSImage(systemSymbolName: symbol, accessibilityDescription: tooltip)?.withSymbolConfiguration(config)
         let button = NSButton(image: image ?? NSImage(), target: self, action: action)
         button.isBordered = false
@@ -306,8 +308,8 @@ final class TerminalPane: NSView, DockPage {
         let (color, word): (NSColor, String)
         switch session.link {
         case .connected: (color, word) = (.systemGreen, "")
-        case .connecting: (color, word) = (.systemYellow, "  connecting…")
-        default: (color, word) = (.systemRed, "  disconnected")
+        case .connecting: (color, word) = (.systemYellow, L("  connecting…"))
+        default: (color, word) = (.systemRed, L("  disconnected"))
         }
         statusDot.layer?.backgroundColor = color.cgColor
         infoLabel.stringValue = target.display + (target.isSSH ? "" : "  (Telnet)") + word
@@ -319,7 +321,7 @@ final class TerminalPane: NSView, DockPage {
         forwardButton.isEnabled = usable
         let live = session.forwards.filter(\.active).count
         forwardButton.contentTintColor = live > 0 ? .systemGreen : NSColor(white: 1, alpha: 0.78)
-        forwardButton.toolTip = live > 0 ? "Port Forwarding (\(live) active)" : "Port Forwarding"
+        forwardButton.toolTip = live > 0 ? L("Port Forwarding (%ld active)", live) : L("Port Forwarding")
     }
 
     // MARK: Shortcuts
@@ -423,8 +425,9 @@ final class TerminalPane: NSView, DockPage {
     @objc private func toggleForwards() {
         if dropdown is ForwardsView { closeDropdown(); return }
         guard let session = activeSession, session.target?.isSSH == true else { return }
-        showDropdown(ForwardsView(session: session), size: NSSize(width: 470, height: 330),
-                     under: forwardButton, alignRight: true)
+        let forwards = ForwardsView(session: session)
+        showDropdown(forwards, size: NSSize(width: 470, height: 330), under: forwardButton, alignRight: true)
+        TabOrder.focusFirstField(in: forwards)
     }
 
     @objc private func transfersChanged() {
@@ -498,6 +501,7 @@ final class TerminalPane: NSView, DockPage {
             settingsView = view
         }
         settingsView?.select(tab: tab)
+        if let settingsView { TabOrder.focusFirstField(in: settingsView) }
     }
 
     private func closeSettings() {
@@ -560,12 +564,12 @@ final class TerminalTabView: NSView {
         icon.contentTintColor = remote ? NSColor(srgbRed: 0.45, green: 0.85, blue: 1.0, alpha: 1) : NSColor(white: 1, alpha: 0.55)
         icon.translatesAutoresizingMaskIntoConstraints = false
 
-        let close = NSButton(image: NSImage(systemSymbolName: "xmark", accessibilityDescription: "Close Tab") ?? NSImage(),
+        let close = NSButton(image: NSImage(systemSymbolName: "xmark", accessibilityDescription: L("Close Tab")) ?? NSImage(),
                              target: self, action: #selector(closeTapped))
         close.isBordered = false
         close.imageScaling = .scaleProportionallyDown
         close.contentTintColor = NSColor(white: 1, alpha: 0.5)
-        close.toolTip = "Close Tab"
+        close.toolTip = L("Close Tab")
         close.translatesAutoresizingMaskIntoConstraints = false
 
         addSubview(icon)

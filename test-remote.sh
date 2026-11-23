@@ -131,6 +131,8 @@ forget_host
 export OMNIHUB_TEST_SSH_PORT=$SSH_PORT OMNIHUB_TEST_WEB_PORT=$WEB_PORT OMNIHUB_TEST_HTTP_PROXY_PORT=$PROXY_PORT
 export OMNIHUB_TEST_TELNET_PORT=$TELNET_PORT OMNIHUB_TEST_KEY="$WORK/locked_key" OMNIHUB_TEST_PLAIN_KEY="$WORK/plain_key"
 export OMNIHUB_TEST_KEY_PASSPHRASE="$PASSPHRASE" OMNIHUB_TEST_PROXY_PASSWORD="$PROXY_PASSWORD"
+# Passwords the test saves go to a Keychain service of their own, not the real vault.
+export OMNIHUB_VAULT_SERVICE="com.local.omnihub.vault.remote-test"
 export OMNIHUB_TEST_REMOTE_DIR="$WORK/remote" OMNIHUB_TEST_PROXY_LOG="$WORK/proxy.log"
 "$APP" --remote-selftest "$OUT"
 STATUS=$?
