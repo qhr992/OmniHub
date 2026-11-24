@@ -122,6 +122,8 @@ final class SettingsPane: NSView, DockPage {
     private let restartNote = NSTextField(labelWithString: L("Takes effect after OmniHub restarts."))
     private let updateStatus = NSTextField(labelWithString: "")
     private lazy var restartButton = button("Restart Now", #selector(restartNow))
+    /// Shown only while a newer version is out.
+    private lazy var updateButton = button("Update", #selector(updateNow))
     private let screenStatus = NSTextField(labelWithString: "")
     private let accessStatus = NSTextField(labelWithString: "")
     private let calendarStatus = NSTextField(labelWithString: "")
@@ -148,9 +150,36 @@ final class SettingsPane: NSView, DockPage {
         guard tab >= 0, tab < tabs.numberOfTabViewItems else { return }
         tabs.selectTabViewItem(at: tab)
         tabPicker.selectedSegment = tab
+        flashScroller()
     }
 
-    @objc private func tabPicked() { tabs.selectTabViewItem(at: tabPicker.selectedSegment) }
+    @objc private func tabPicked() {
+        tabs.selectTabViewItem(at: tabPicker.selectedSegment)
+        flashScroller()
+    }
+
+    private var shownScroll: NSScrollView? { tabs.selectedTabViewItem?.view as? NSScrollView }
+
+    /// The overlay scroller only shows while scrolling: flash it so a tab
+    /// longer than the card shows there is more below.
+    private func flashScroller() {
+        DispatchQueue.main.async { [weak self] in
+            guard let scroll = self?.shownScroll, let document = scroll.documentView,
+                  document.frame.height > scroll.contentView.bounds.height + 1 else { return }
+            scroll.flashScrollers()
+        }
+    }
+
+    /// Test hook: the shown tab's content and visible heights, after
+    /// scrolling it to the bottom.
+    func debugScrollToBottom() -> (content: CGFloat, visible: CGFloat)? {
+        guard let scroll = shownScroll, let document = scroll.documentView else { return nil }
+        layoutSubtreeIfNeeded()
+        let visible = scroll.contentView.bounds.height
+        scroll.contentView.scroll(to: NSPoint(x: 0, y: max(0, document.frame.height - visible)))
+        scroll.reflectScrolledClipView(scroll.contentView)
+        return (document.frame.height, visible)
+    }
 
     /// Eight tabs must fit the card's width: in a narrow card the strip
     /// uses a smaller font and shares the width out evenly.
@@ -185,6 +214,7 @@ final class SettingsPane: NSView, DockPage {
 
     func pageWillAppear() {
         refreshStatus()
+        flashScroller()
         // Permissions are granted in System Settings, so poll while open.
         statusTimer?.invalidate()
         let timer = Timer(timeInterval: 1.5, repeats: true) { [weak self] _ in self?.refreshStatus() }
@@ -199,20 +229,36 @@ final class SettingsPane: NSView, DockPage {
 
     // MARK: Layout helpers
 
+    /// A tab's content, scrolling when it is taller than the card.
     private func page(_ views: [NSView]) -> NSView {
         let stack = NSStackView(views: views)
         stack.orientation = .vertical
         stack.alignment = .leading
         stack.spacing = 10
         stack.translatesAutoresizingMaskIntoConstraints = false
-        let container = NSView()
-        container.addSubview(stack)
+        let document = FlippedView()
+        document.translatesAutoresizingMaskIntoConstraints = false
+        document.addSubview(stack)
+        let scroll = NSScrollView()
+        scroll.documentView = document
+        scroll.drawsBackground = false
+        scroll.hasVerticalScroller = true
+        scroll.autohidesScrollers = true
+        // An overlay scroller floats over the page and takes no width: a
+        // legacy one that comes and goes changes the width the page lays
+        // out in, which can flip it on and off for ever.
+        scroll.scrollerStyle = .overlay
+        let clip = scroll.contentView
         NSLayoutConstraint.activate([
-            stack.topAnchor.constraint(equalTo: container.topAnchor, constant: 14),
-            stack.leadingAnchor.constraint(equalTo: container.leadingAnchor, constant: 18),
-            stack.trailingAnchor.constraint(lessThanOrEqualTo: container.trailingAnchor, constant: -18)
+            document.topAnchor.constraint(equalTo: clip.topAnchor),
+            document.leadingAnchor.constraint(equalTo: clip.leadingAnchor),
+            document.widthAnchor.constraint(equalTo: clip.widthAnchor),
+            stack.topAnchor.constraint(equalTo: document.topAnchor, constant: 14),
+            stack.leadingAnchor.constraint(equalTo: document.leadingAnchor, constant: 18),
+            stack.trailingAnchor.constraint(lessThanOrEqualTo: document.trailingAnchor, constant: -18),
+            stack.bottomAnchor.constraint(equalTo: document.bottomAnchor, constant: -14)
         ])
-        return container
+        return scroll
     }
 
     private func row(_ views: NSView...) -> NSStackView {
@@ -277,7 +323,7 @@ final class SettingsPane: NSView, DockPage {
             row(languagePopup, restartNote, restartButton),
             heading("Updates"),
             row(PrefCheckbox("Check for updates automatically", key: UpdateChecker.autoKey, fallback: true),
-                button("Check Now", #selector(checkUpdates)), updateStatus),
+                updateStatus, updateButton),
             heading("Startup"),
             loginCheckbox,
             row(PrefCheckbox("Startup animation", key: "boot.enabled", fallback: true),
@@ -471,6 +517,10 @@ final class SettingsPane: NSView, DockPage {
                                      ClipboardStore.shared.recentItems.count, ClipboardStore.shared.pinnedItems.count)
         dockVisible.state = Prefs.bool("dock.hidden") ? .off : .on
         updateStatus.stringValue = UpdateChecker.shared.statusText
+        let action = UpdateChecker.shared.actionTitle
+        updateButton.isHidden = action == nil
+        updateButton.isEnabled = UpdateChecker.shared.canAct
+        if let action, updateButton.title != action { updateButton.title = action }
     }
 
     // MARK: Actions
@@ -519,7 +569,7 @@ final class SettingsPane: NSView, DockPage {
         AppRelaunch.now()
     }
 
-    @objc private func checkUpdates() { UpdateChecker.shared.checkNow() }
+    @objc private func updateNow() { UpdateChecker.shared.updateNow() }
 
     @objc private func previewBoot() { BootAnimation.playIfEnabled(force: true) }
     @objc private func openScreenSettings() { ScreenCapture.openPrivacySettings() }

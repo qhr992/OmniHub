@@ -79,6 +79,8 @@ final class FloatingDockPanel: NSPanel, EscDismissable {
     private let nav = NSStackView()
     /// Clipboard and Settings, at the far end of the entry row.
     private let navTrailing = NSStackView()
+    /// Leads the trailing icons while a newer OmniHub is out.
+    private let updateButton = NSButton()
     private var navButtons: [Page: NSButton] = [:]
     private let pageTitle = NSTextField(labelWithString: "")
     private let holidayLabel = NSTextField(labelWithString: "")
@@ -341,6 +343,8 @@ final class FloatingDockPanel: NSPanel, EscDismissable {
         center.addObserver(self, selector: #selector(dataChanged),
                            name: NSApplication.didChangeScreenParametersNotification, object: nil)
         center.addObserver(self, selector: #selector(activityChanged), name: .activityChanged, object: nil)
+        center.addObserver(self, selector: #selector(updateStatusChanged), name: .updateStatusChanged, object: nil)
+        updateStatusChanged()
         center.addObserver(forName: MediaObserver.controlUnavailable, object: nil, queue: .main) { [weak self] note in
             self?.showControlNote(note.object as? String ?? "")
         }
@@ -417,6 +421,19 @@ final class FloatingDockPanel: NSPanel, EscDismissable {
 
     @objc private func dataChanged() { refresh() }
 
+    /// Shows or hides the Update icon; the card is laid out again only
+    /// when it appears or goes (not on every percent of a download).
+    @objc private func updateStatusChanged() {
+        let title = UpdateChecker.shared.actionTitle
+        updateButton.toolTip = title
+        updateButton.isEnabled = UpdateChecker.shared.canAct
+        guard updateButton.isHidden != (title == nil) else { return }
+        updateButton.isHidden = title == nil
+        if expanded, !dragging { applyGeometry() }
+    }
+
+    @objc private func updateTapped() { UpdateChecker.shared.updateNow() }
+
     /// The activity page grows and shrinks with what it shows.
     @objc private func activityChanged() {
         if expanded, page == .activity, !dragging { applyGeometry() }
@@ -489,6 +506,22 @@ final class FloatingDockPanel: NSPanel, EscDismissable {
             (target.onTrailingSide ? navTrailing : nav).addArrangedSubview(button)
             navButtons[target] = button
         }
+        let updateConfig = NSImage.SymbolConfiguration(pointSize: 14, weight: .semibold)
+        updateButton.image = NSImage(systemSymbolName: "arrow.down.circle.fill", accessibilityDescription: L("Update"))?
+            .withSymbolConfiguration(updateConfig)
+        updateButton.imagePosition = .imageOnly
+        updateButton.isBordered = false
+        updateButton.contentTintColor = NSColor(srgbRed: 0.35, green: 0.85, blue: 0.45, alpha: 1)
+        updateButton.target = self
+        updateButton.action = #selector(updateTapped)
+        updateButton.wantsLayer = true
+        updateButton.layer?.cornerRadius = 8
+        updateButton.layer?.backgroundColor = NSColor(srgbRed: 0.35, green: 0.85, blue: 0.45, alpha: 0.18).cgColor
+        updateButton.translatesAutoresizingMaskIntoConstraints = false
+        updateButton.widthAnchor.constraint(equalToConstant: 32).isActive = true
+        updateButton.heightAnchor.constraint(equalToConstant: 28).isActive = true
+        updateButton.isHidden = true
+        navTrailing.insertArrangedSubview(updateButton, at: 0)
         pageTitle.font = .systemFont(ofSize: 13, weight: .semibold)
         pageTitle.textColor = .white
         holidayLabel.font = .systemFont(ofSize: 11, weight: .medium)
@@ -1100,7 +1133,7 @@ final class FloatingDockPanel: NSPanel, EscDismissable {
         let horizontal = isHorizontal
         let navOnRight = nearestEdge == .right
         // The row of entry icons needs this much even under a narrow page.
-        let icons = CGFloat(Page.allCases.filter(Page.isShown).count)
+        let icons = CGFloat(Page.allCases.filter(Page.isShown).count + (updateButton.isHidden ? 0 : 1))
         let minWidth: CGFloat = horizontal ? icons * 32 + (icons - 1) * 4 + 170 : 0
         let contentWidth = max(content.width, minWidth)
         let sideNav = horizontal ? 0 : Self.navColumn + 10

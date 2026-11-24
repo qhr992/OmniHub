@@ -56,6 +56,15 @@ enum L10nSelfTest {
                 settings.select(tab: index)
                 inspect(settings, "settings-\(index + 1)")
             }
+            // General is longer than the card: it scrolls to its last row.
+            settings.select(tab: 0)
+            if let size = settings.debugScrollToBottom() {
+                check("settings-1 scrolls: \(Int(size.content)) pt of content in \(Int(size.visible)) pt",
+                      size.content > size.visible && size.visible > 100)
+                inspect(settings, "settings-1-bottom")
+            } else {
+                check("settings-1 scrolls", false)
+            }
         }
         let terminal = FloatingDockPanel.terminal
         if page(.terminal, "terminal") != nil {

@@ -23,11 +23,10 @@ final class UpdateChecker: NSObject {
     static let shared = UpdateChecker()
 
     static let autoKey = "update.auto"
-    private static let lastCheckKey = "update.lastCheck"
-    private static let skippedKey = "update.skipped"
     private static let feed = URL(string: "https://github.com/qhr992/OmniHub/releases.atom")!
     private static let downloads = "https://github.com/qhr992/OmniHub/releases/download"
-    private static let checkEvery: TimeInterval = 24 * 3600
+    private static let checkEvery: TimeInterval = 6 * 3600
+    private static let retryEvery: TimeInterval = 3600
     private static let firstCheckDelay: TimeInterval = 20
     private static let requestTimeout: TimeInterval = 20
 
@@ -53,6 +52,10 @@ final class UpdateChecker: NSObject {
     private var timer: Timer?
     private var progressWatch: NSKeyValueObservation?
     private var staged: URL?
+    /// When the feed last answered (not persisted: each launch checks).
+    private var lastAnswer: Date?
+    /// Versions already offered by this run, so the prompt comes once.
+    private var offered: Set<String> = []
 
     /// The version this copy reports; `debug.updateAsVersion` pretends to
     /// be an older one (test hook).
@@ -61,24 +64,27 @@ final class UpdateChecker: NSObject {
             ?? (Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "0")
     }
 
-    /// Automatic checks: a while after launch, then once a day (a failed
-    /// check is retried within the hour).
+    /// Automatic checks: shortly after every launch, then every six hours
+    /// (a failed check is retried within the hour). Nothing to click: a
+    /// newer version is offered by itself, and stays one click away on the
+    /// Update buttons (card, menu bar menu, Settings) after "Later".
     func start() {
+        // Left by builds up to 1.8.4, which checked once a day.
+        for key in ["update.lastCheck", "update.skipped"] { UserDefaults.standard.removeObject(forKey: key) }
         DispatchQueue.main.asyncAfter(deadline: .now() + Self.firstCheckDelay) { [weak self] in self?.checkIfDue() }
-        let timer = Timer(timeInterval: 3600, repeats: true) { [weak self] _ in self?.checkIfDue() }
+        let timer = Timer(timeInterval: Self.retryEvery, repeats: true) { [weak self] _ in self?.checkIfDue() }
         RunLoop.main.add(timer, forMode: .common)
         self.timer = timer
     }
 
     private func checkIfDue() {
         guard Prefs.bool(Self.autoKey, true) else { return }
-        let last = Prefs.double(Self.lastCheckKey, 0)
-        guard Date().timeIntervalSince1970 - last >= Self.checkEvery else { return }
+        if let lastAnswer, Date().timeIntervalSince(lastAnswer) < Self.checkEvery { return }
         check(userInitiated: false)
     }
 
     /// Asks the feed. A check started by hand always reports back; an
-    /// automatic one speaks up only for a newer version not skipped.
+    /// automatic one speaks up only for a newer version not yet offered.
     func check(userInitiated: Bool) {
         switch status {
         case .checking, .downloading: return
@@ -92,7 +98,7 @@ final class UpdateChecker: NSObject {
             guard let self else { return }
             // Only an answer counts as a check: after a failure (github.com
             // is often out of reach) the hourly timer tries again.
-            if case .success = result { Prefs.set(Self.lastCheckKey, Date().timeIntervalSince1970) }
+            if case .success = result { self.lastAnswer = Date() }
             switch result {
             case .failure(let error):
                 self.status = .failed(error.localizedDescription)
@@ -106,7 +112,10 @@ final class UpdateChecker: NSObject {
                     return
                 }
                 self.status = .available(release)
-                if userInitiated || Prefs.string(Self.skippedKey) != release.version { self.offer(release) }
+                if userInitiated || !self.offered.contains(release.version) {
+                    self.offered.insert(release.version)
+                    self.offer(release)
+                }
             }
         }
     }
@@ -208,13 +217,8 @@ final class UpdateChecker: NSObject {
         alert.informativeText = L("You have %@.", Self.currentVersion) + (notes.isEmpty ? "" : "\n\n" + notes)
         alert.addButton(withTitle: L("Download and Install"))
         alert.addButton(withTitle: L("Later"))
-        alert.addButton(withTitle: L("Skip This Version"))
         NSApp.activate(ignoringOtherApps: true)
-        switch alert.runModal() {
-        case .alertFirstButtonReturn: download(release)
-        case .alertThirdButtonReturn: Prefs.set(Self.skippedKey, release.version)
-        default: break
-        }
+        if alert.runModal() == .alertFirstButtonReturn { download(release) }
     }
 
     private func offerRestart(_ release: Release) {
@@ -283,7 +287,8 @@ final class UpdateChecker: NSObject {
                       error.localizedDescription + "\n\n" + L("In the window that opened, drag OmniHub onto Applications, then reopen it."))
             }
         case .failure(let error):
-            status = .failed(error.localizedDescription)
+            // Still on offer: the Update buttons stay for another try.
+            status = .available(release)
             let alert = NSAlert()
             alert.messageText = L("Could not download the update")
             alert.informativeText = error.localizedDescription
@@ -411,8 +416,36 @@ final class UpdateChecker: NSObject {
         }
     }
 
-    /// Settings › Check Now: shows the offer again when one is pending.
-    func checkNow() {
-        if case .available(let release) = status { offer(release) } else { check(userInitiated: true) }
+    /// The Update buttons: install what was found (the click is the
+    /// consent, so no second question), restart into a downloaded one, or
+    /// — with nothing found yet — check and report.
+    func updateNow() {
+        switch status {
+        case .available(let release): download(release)
+        case .ready(let release): offerRestart(release)
+        case .downloading: break
+        default: check(userInitiated: true)
+        }
+    }
+
+    /// The Update buttons' title; nil while there is nothing newer.
+    var actionTitle: String? {
+        switch status {
+        case .available(let release): return L("Update to %@", release.version)
+        case .downloading(let release, let fraction):
+            return fraction.map { L("Downloading %@… %ld%%", release.version, Int($0 * 100)) }
+                ?? L("Downloading %@…", release.version)
+        case .ready: return L("Restart to Update")
+        default: return nil
+        }
+    }
+
+    /// Test hook: pretend a check found `release` (or nothing).
+    func debugFound(_ release: Release?) { status = release.map { .available($0) } ?? .upToDate }
+
+    /// False while downloading (the button then only shows progress).
+    var canAct: Bool {
+        if case .downloading = status { return false }
+        return true
     }
 }
