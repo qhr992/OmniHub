@@ -120,7 +120,7 @@ final class StatusIconColorsRow: NSStackView {
         let first = NSStackView(views: top)
         first.spacing = 8
         addArrangedSubview(first)
-        addArrangedSubview(PrefCheckbox("Battery coloured by charge (green from 80 %, red at 20 % or less, orange to yellow between)",
+        addArrangedSubview(PrefCheckbox("Battery coloured by charge",
                                         key: StatusIcon.Palette.semanticKey, fallback: true))
         sync()
     }

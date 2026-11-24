@@ -57,8 +57,8 @@ A menu bar suite for macOS. Screenshots, pinned images, clipboard history, Now P
 **Appearance.**
 - The card's background opacity can be lowered to show the blurred desktop behind it.
 - The menu bar can show the runner or the status icon; the dock ball can show the logo or the status icon; the status icon can also be shown in the Dock.
-- The status icon is a live icon laid out like the iPhone "Duo" status icon, by way of [Status Trio](https://github.com/lingyired/status-trio) (Apache-2.0); OmniHub draws it with its own code. An open ring with a head at the top, a glyph in the middle and dots (or an arc) on the same circle at the bottom, so the whole reads as one round outline, each show what you pick (battery, CPU, memory, disk, Wi-Fi, network, volume).
-- Battery on the ring: the charge as a figure on battery, a bolt while charging, a plug when plugged in and not charging or full (or the figure, if you prefer). The colour follows the charge: green from 80 %, shading through yellow and orange to red at 20 % or less, plugged in or not; the bolt and plug are green, the figure turns red at 10 % or less and yellow in Low Power Mode. A Mac without a battery shows the plug.
+- The status icon is a live icon laid out like the iPhone "Duo" status icon,; OmniHub draws it with its own code. An open ring with a head at the top, a glyph in the middle and dots (or an arc) on the same circle at the bottom, so the whole reads as one round outline, each show what you pick (battery, CPU, memory, disk, Wi-Fi, network, volume).
+- Battery on the ring: the charge as a figure on battery, a bolt while charging, a plug when plugged in and not charging or full (or the figure, if you prefer). The colour follows the charge: green from 80 %, shading through yellow and orange to red at 20 % or less, plugged in or not; the bolt and plug are green, the figure turns red at 10 % or less and yellow in Low Power Mode. A Mac without a battery shows the plug. An amber dot at the top right means Keep Awake is on.
 - Colours: themes (Automatic, Aurora, Sunset, Mint, Sakura, Violet, Paper) or your own colour for the ring, middle, dots and background.
 
 ## Installation

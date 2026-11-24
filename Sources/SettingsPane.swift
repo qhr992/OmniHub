@@ -476,9 +476,6 @@ final class SettingsPane: NSView, DockPage {
                     PrefCheckbox("Public IP (asks api.ipify.org)", key: "activity.publicIP", fallback: false)),
                 row(label("Refresh every"), PrefChoice(key: "activity.interval", fallback: 2,
                                                options: [(1, "1 s"), (2, "2 s"), (5, "5 s")]))
-            ]),
-            section("Keep Awake", "cup.and.saucer.fill", Tint.orange, [
-                hint("Keeps the display from sleeping while you are away — for 30 minutes, 1 or 2 hours, or until turned off. Set it on the Activity page or from the menu bar icon; it ends when OmniHub quits.")
             ])
         ])
 

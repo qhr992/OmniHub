@@ -219,9 +219,8 @@ final class StatusIcon {
         }
     }
 
-    // The layout follows the iPhone "Duo" status icon, by way of Status Trio
-    // (github.com/lingyired/status-trio, Apache-2.0), drawn here in our own
-    // code: an open ring whose top gap holds a head (a figure or a sign),
+    // The layout follows the iPhone "Duo" status icon, drawn here in our
+    // own code: an open ring whose top gap holds a head (a figure or a sign),
     // a glyph in the middle, and dots (or a short arc) in the bottom gap.
 
     /// The ring runs clockwise from bottom left (225°) over the top to
