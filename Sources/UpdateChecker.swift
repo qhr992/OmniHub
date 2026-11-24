@@ -61,7 +61,8 @@ final class UpdateChecker: NSObject {
             ?? (Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "0")
     }
 
-    /// Automatic checks: a while after launch, then once a day.
+    /// Automatic checks: a while after launch, then once a day (a failed
+    /// check is retried within the hour).
     func start() {
         DispatchQueue.main.asyncAfter(deadline: .now() + Self.firstCheckDelay) { [weak self] in self?.checkIfDue() }
         let timer = Timer(timeInterval: 3600, repeats: true) { [weak self] _ in self?.checkIfDue() }
@@ -89,7 +90,9 @@ final class UpdateChecker: NSObject {
         status = .checking
         fetchLatest { [weak self] result in
             guard let self else { return }
-            Prefs.set(Self.lastCheckKey, Date().timeIntervalSince1970)
+            // Only an answer counts as a check: after a failure (github.com
+            // is often out of reach) the hourly timer tries again.
+            if case .success = result { Prefs.set(Self.lastCheckKey, Date().timeIntervalSince1970) }
             switch result {
             case .failure(let error):
                 self.status = .failed(error.localizedDescription)
@@ -359,7 +362,7 @@ final class UpdateChecker: NSObject {
         let script = """
         while kill -0 "$3" 2>/dev/null; do sleep 0.2; done
         rm -rf "$2.old"
-        if mv "$2" "$2.old" && /usr/bin/ditto "$1" "$2"; then rm -rf "$2.old" "$1"
+        if mv "$2" "$2.old" && /usr/bin/ditto "$1" "$2"; then rm -rf "$2.old" "$(dirname "$1")"
         else rm -rf "$2"; mv "$2.old" "$2"; fi
         /usr/bin/open "$2"
         """
