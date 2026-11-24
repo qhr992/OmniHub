@@ -276,9 +276,45 @@ final class StatusIcon {
         return (ringStart + margin, max(10, gap - 2 * margin))
     }
 
+    /// Keep Awake: a small amber coffee cup — after the figure on the ring's
+    /// top, or in the top right corner when there is no ring.
+    static let awakeSymbol = "cup.and.saucer.fill"
+
+    /// The cup's width beside the figure, as a share of the icon.
+    private static let awakeWidth: CGFloat = 0.24
+
+    /// The corner cup's box (no ring): the top right, a little over a third of the icon.
+    static func awakeBadge(in rect: NSRect) -> NSRect {
+        let size = min(rect.width, rect.height) * 0.38
+        return NSRect(x: rect.maxX - size, y: rect.maxY - size, width: size, height: size)
+    }
+
     private static func draw(in rect: NSRect, readings: Readings, config: Config, colors: Colors) {
+        // With a head, the cup joins it on the ring's top.
+        guard readings.keepAwake, ringHead(config.ring, readings, colors: colors) == nil,
+              let context = NSGraphicsContext.current?.cgContext else {
+            drawParts(in: rect, readings: readings, config: config, colors: colors)
+            return
+        }
+        // The parts go on a layer of their own, with a gap cut around the
+        // cup so it never sits on the ring (the plate below stays whole).
+        let badge = awakeBadge(in: rect)
+        let gap = max(0.8, min(rect.width, rect.height) * 0.04)
+        context.beginTransparencyLayer(auxiliaryInfo: nil)
+        drawParts(in: rect, readings: readings, config: config, colors: colors)
+        context.setBlendMode(.clear)
+        let cut = badge.insetBy(dx: -gap, dy: -gap)
+        context.addPath(CGPath(roundedRect: cut, cornerWidth: cut.width * 0.35, cornerHeight: cut.height * 0.35, transform: nil))
+        context.fillPath()
+        context.setBlendMode(.normal)
+        context.endTransparencyLayer()
+        drawSymbol(awakeSymbol, value: nil, in: badge, foreground: Tint.awake)
+    }
+
+    private static func drawParts(in rect: NSRect, readings: Readings, config: Config, colors: Colors) {
         // Head and ring.
-        let head = ringHead(config.ring, readings, colors: colors)
+        var head = ringHead(config.ring, readings, colors: colors)
+        if readings.keepAwake { head?.awake = true }
         let geometry = Geometry(rect, head: head != nil)
         let (side, line, center, radius) = (geometry.side, geometry.line, geometry.center, geometry.radius)
         if let (level, tint) = ringLevel(config.ring, readings, colors: colors) {
@@ -339,13 +375,6 @@ final class StatusIcon {
         let box = side * 0.5
         let middle = NSRect(x: center.x - box / 2, y: center.y - box / 2 - side * 0.03, width: box, height: box)
         drawCenter(config.center, readings, in: middle, foreground: colors.center)
-
-        // Keep Awake: a small amber dot in the top right corner.
-        if readings.keepAwake {
-            let dot = max(2.5, side * 0.15)
-            Tint.awake.setFill()
-            NSBezierPath(ovalIn: NSRect(x: rect.maxX - dot, y: rect.maxY - dot, width: dot, height: dot)).fill()
-        }
     }
 
     /// What sits in the ring's top gap.
@@ -353,6 +382,8 @@ final class StatusIcon {
         var text: String?
         var symbol: String?
         var color: NSColor
+        /// Keep Awake's cup after the figure or sign.
+        var awake = false
     }
 
     private static func ringHead(_ ring: Ring, _ r: Readings, colors: Colors) -> Head? {
@@ -405,6 +436,7 @@ final class StatusIcon {
         var width: CGFloat = 0
         if let text = head.text { width += (text as NSString).size(withAttributes: [.font: font]).width }
         if head.symbol != nil { width += side * (head.text == nil ? 0.3 : 0.2) + (head.text == nil ? 0 : side * 0.02) }
+        if head.awake { width += side * (0.03 + awakeWidth) }
         return NSSize(width: width, height: side * 0.3)
     }
 
@@ -421,6 +453,12 @@ final class StatusIcon {
             let attributes: [NSAttributedString.Key: Any] = [.font: headFont(side: side), .foregroundColor: head.color]
             let measured = (text as NSString).size(withAttributes: attributes)
             (text as NSString).draw(at: NSPoint(x: x, y: point.y - measured.height / 2), withAttributes: attributes)
+            x += measured.width
+        }
+        if head.awake {
+            let width = side * awakeWidth
+            drawSymbol(awakeSymbol, value: nil, in: NSRect(x: x + side * 0.03, y: point.y - width / 2, width: width, height: width),
+                       foreground: Tint.awake)
         }
     }
 

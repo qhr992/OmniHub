@@ -318,8 +318,63 @@ enum StatusSelfTest {
         }
         var awake = readings
         awake.keepAwake = true
-        let dot = pixels(StatusIcon.image(size: 40, readings: awake, config: ringOnly, foreground: .white), size: 80)
-        check("Keep Awake shows an amber dot", dot.map { count($0, near: StatusIcon.Tint.awake) } ?? 0 > 10)
+        // Keep Awake: an amber cup beside the figure on the ring's top (the
+        // figure stays whole, nothing cut off at the top), or in the corner
+        // when there is no ring.
+        do {
+            let withRing = StatusIcon.Config(ring: .battery, center: .wifi, dots: .volume)
+            let noRing = StatusIcon.Config(ring: .none, center: .wifi, dots: .volume)
+            func amber(_ config: StatusIcon.Config, _ percent: Int, size: CGFloat) -> (count: Int, top: Int, highest: Int) {
+                var state = awake
+                state.battery = .sample(percent: percent)
+                let scale: CGFloat = 4
+                let image = StatusIcon.image(size: size, readings: state, config: config, foreground: .white)
+                guard let rep = pixels(image, size: Int(size * scale)) else { return (0, 0, 0) }
+                let side = Int(size * scale)
+                var count = 0, highest = side
+                for y in 0..<side { for x in 0..<side {
+                    guard let pixel = rep.colorAt(x: x, y: y), pixel.alphaComponent > 0.5,
+                          (pixel.usingColorSpace(.sRGB).map { abs($0.redComponent - 1) < 0.08 && abs($0.greenComponent - 0.70) < 0.12
+                            && $0.blueComponent < 0.45 } ?? false) else { continue }
+                    count += 1
+                    highest = min(highest, y)
+                } }
+                let top = (0..<side).filter { (rep.colorAt(x: $0, y: 0)?.alphaComponent ?? 0) > 0.3 }.count
+                return (count, top, highest)
+            }
+            let beside = amber(withRing, 77, size: 40)
+            let full = amber(withRing, 100, size: 22)
+            let corner = amber(noRing, 77, size: 40)
+            check("Keep Awake: a cup beside the figure (\(beside.count) amber pixels, top third), "
+                    + "at 100 % in the menu bar too (\(full.count), \(full.top) pixels on the top edge), in the corner with no ring (\(corner.count))",
+                  beside.count > 60 && beside.highest < 160 / 3 && full.count > 10 && full.top == 0 && corner.count > 60)
+            if let pictures {
+                // Menu bar size (light and dark bars, at 4×) at 77 % and 100 %, and on the Dock plate.
+                let sheet = NSImage(size: NSSize(width: 88 * 3 + 128, height: 128), flipped: false) { _ in
+                    for (index, item) in [(NSColor(white: 0.93, alpha: 1), 77), (NSColor(white: 0.16, alpha: 1), 77),
+                                          (NSColor(white: 0.16, alpha: 1), 100)].enumerated() {
+                        var state = awake
+                        state.battery = .sample(percent: item.1)
+                        state.volume = 0.5
+                        let box = NSRect(x: CGFloat(index) * 88, y: 20, width: 88, height: 88)
+                        item.0.setFill()
+                        box.fill()
+                        StatusIcon.image(size: 22, readings: state, config: withRing,
+                                         foreground: index == 0 ? .black : .white).draw(in: box)
+                    }
+                    var state = awake
+                    state.battery = .sample(percent: 77)
+                    state.volume = 0.5
+                    StatusIcon.image(size: 128, readings: state, config: withRing, foreground: .white, plate: .square)
+                        .draw(in: NSRect(x: 264, y: 0, width: 128, height: 128))
+                    return true
+                }
+                if let tiff = sheet.tiffRepresentation,
+                   let png = NSBitmapImageRep(data: tiff)?.representation(using: .png, properties: [:]) {
+                    try? png.write(to: pictures.appendingPathComponent("keep-awake.png"))
+                }
+            }
+        }
 
         // The dock ball switches between the logo and the status icon.
         _ = FloatingDockPanel.debugCardSize(page: .home, x: 0.5, y: 0)
