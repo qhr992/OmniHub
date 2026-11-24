@@ -9,8 +9,7 @@ extension StatusIcon {
         var center: NSColor?
         var dots: NSColor?
         var plate: NSColor?
-        /// Battery in state colours (green charging, red low, yellow in Low
-        /// Power Mode) whatever the theme.
+        /// Battery coloured by its charge (green to red) whatever the theme.
         var semantic = true
 
         static let defaultPlate = NSColor(srgbRed: 0.10, green: 0.11, blue: 0.16, alpha: 1)
@@ -121,7 +120,7 @@ final class StatusIconColorsRow: NSStackView {
         let first = NSStackView(views: top)
         first.spacing = 8
         addArrangedSubview(first)
-        addArrangedSubview(PrefCheckbox("Battery in state colours (green charging, red low, yellow in Low Power Mode)",
+        addArrangedSubview(PrefCheckbox("Battery coloured by charge (green from 80 %, red at 20 % or less, orange to yellow between)",
                                         key: StatusIcon.Palette.semanticKey, fallback: true))
         sync()
     }

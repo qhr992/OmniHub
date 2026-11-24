@@ -257,12 +257,24 @@ final class StatusIcon {
         dotCentres(Geometry(rect, head: head))
     }
 
+    /// The dots sit on the ring's own circle, evenly spaced across the open
+    /// bottom (243°, 261°, 279°, 297°), and are as thick as the ring, so
+    /// ring and dots read as one round outline.
     private static func dotCentres(_ geometry: Geometry) -> [NSPoint] {
         let (center, radius) = (geometry.center, geometry.radius)
-        return [241, 260.5, 279.5, 299].map { (degrees: CGFloat) in
-            let angle = degrees * .pi / 180
-            return NSPoint(x: center.x + cos(angle) * radius * 0.9, y: center.y + sin(angle) * radius * 0.9)
+        let step = (360 - ringSweep) / 5
+        return (1...4).map { (index: Int) in
+            let angle = (ringStart + step * CGFloat(index)) * .pi / 180
+            return NSPoint(x: center.x + cos(angle) * radius, y: center.y + sin(angle) * radius)
         }
+    }
+
+    /// The bottom arc's span: the open bottom less room for the ring's
+    /// round ends and a gap the width of the line.
+    private static func bottomArc(_ geometry: Geometry) -> (start: CGFloat, sweep: CGFloat) {
+        let margin = geometry.line * 1.6 / geometry.radius * 180 / .pi
+        let gap = 360 - ringSweep
+        return (ringStart + margin, max(10, gap - 2 * margin))
     }
 
     private static func draw(in rect: NSRect, readings: Readings, config: Config, colors: Colors) {
@@ -300,21 +312,22 @@ final class StatusIcon {
         if hasBottom, let (level, tint) = dotsLevel(config.dots, readings, colors: colors) {
             let unlit = (colors.dots ?? colors.neutral).withAlphaComponent(0.25)
             if Prefs.int(bottomStyleKey, 0) == 1 {
+                let span = bottomArc(geometry)
                 let path = { (sweep: CGFloat) -> NSBezierPath in
                     let path = NSBezierPath()
-                    path.appendArc(withCenter: center, radius: radius * 0.9, startAngle: 241, endAngle: 241 + sweep)
-                    path.lineWidth = line * 0.85
+                    path.appendArc(withCenter: center, radius: radius, startAngle: span.start, endAngle: span.start + sweep)
+                    path.lineWidth = line
                     path.lineCapStyle = .round
                     return path
                 }
                 unlit.setStroke()
-                path(58).stroke()
+                path(span.sweep).stroke()
                 if level > 0.01 {
                     tint.setStroke()
-                    path(58 * CGFloat(min(level, 1))).stroke()
+                    path(span.sweep * CGFloat(min(level, 1))).stroke()
                 }
             } else {
-                let dot = max(2.0, line * 1.15)
+                let dot = line
                 let lit = level <= 0 ? 0 : Int((level * 4).rounded(.up))
                 for (index, point) in dotCentres(geometry).enumerated() {
                     (index < lit ? tint : unlit).setFill()
@@ -356,18 +369,20 @@ final class StatusIcon {
             // No battery (a desktop Mac): always on the adapter.
             guard let battery = r.battery else { return Head(text: nil, symbol: "powerplug.fill", color: colors.center) }
             let text = "\(battery.percent)"
-            let warn = colors.semantic ? Tint.low : colors.center
+            let figure = Prefs.bool(figureWhilePluggedKey, false)
+            // The sign takes the state's colour; the figure stays neutral
+            // unless it is a warning (red when very low, yellow in Low
+            // Power Mode).
+            func tinted(_ color: NSColor) -> NSColor { colors.semantic ? color : colors.center }
             switch battery.state {
             case .charging:
-                return Prefs.bool(figureWhilePluggedKey, false)
-                    ? Head(text: text, symbol: "bolt.fill", color: colors.center)
-                    : Head(text: nil, symbol: "bolt.fill", color: colors.center)
+                return Head(text: figure ? text : nil, symbol: "bolt.fill", color: tinted(Tint.charging))
             case .full, .held:
-                return Prefs.bool(figureWhilePluggedKey, false)
-                    ? Head(text: text, symbol: nil, color: colors.center)
-                    : Head(text: nil, symbol: "powerplug.fill", color: colors.center)
-            case .critical: return Head(text: text, symbol: nil, color: warn)
-            case .lowPower, .low, .normal: return Head(text: text, symbol: nil, color: colors.center)
+                return figure ? Head(text: text, symbol: nil, color: colors.center)
+                    : Head(text: nil, symbol: "powerplug.fill", color: tinted(Tint.charging))
+            case .critical: return Head(text: text, symbol: nil, color: tinted(Tint.low))
+            case .lowPower: return Head(text: text, symbol: nil, color: tinted(Tint.lowPower))
+            case .low, .normal: return Head(text: text, symbol: nil, color: colors.center)
             }
         }
     }
@@ -410,22 +425,37 @@ final class StatusIcon {
         }
     }
 
-    /// Battery colours: green on the adapter, red when low (10 % or 20 %),
-    /// yellow in Low Power Mode, else `foreground`.
-    static func batteryTint(_ battery: BatteryInfo, foreground: NSColor) -> NSColor {
-        switch battery.state {
-        case .charging, .full, .held: return Tint.charging
-        case .critical, .low: return Tint.low
-        case .lowPower: return Tint.lowPower
-        case .normal: return foreground
+    /// Colour stops of the charge: red up to 20 %, through orange and
+    /// yellow, green from 80 %.
+    static let chargeStops: [(percent: Double, color: NSColor)] = [
+        (20, Tint.low),
+        (40, NSColor(srgbRed: 1.0, green: 0.58, blue: 0.20, alpha: 1)),
+        (60, NSColor(srgbRed: 1.0, green: 0.82, blue: 0.22, alpha: 1)),
+        (80, Tint.charging)
+    ]
+
+    /// The colour of a charge, blended between the stops, so it shifts as
+    /// the battery fills or drains.
+    static func chargeTint(_ percent: Int) -> NSColor {
+        let value = Double(percent)
+        guard let first = chargeStops.first, let last = chargeStops.last else { return Tint.charging }
+        if value <= first.percent { return first.color }
+        if value >= last.percent { return last.color }
+        for (lower, upper) in zip(chargeStops, chargeStops.dropFirst()) where value <= upper.percent {
+            let fraction = (value - lower.percent) / (upper.percent - lower.percent)
+            let from = lower.color.usingColorSpace(.sRGB) ?? lower.color
+            return from.blended(withFraction: CGFloat(fraction), of: upper.color) ?? from
         }
+        return last.color
     }
 
-    /// The battery's colour: the state colours when they are on, else the
-    /// part's own colour.
+    /// The battery's colour: by charge, whatever the state (the head shows
+    /// charging, the adapter and Low Power Mode).
+    static func batteryTint(_ battery: BatteryInfo) -> NSColor { chargeTint(battery.percent) }
+
+    /// The battery's colour: by charge when that is on, else the part's own.
     private static func battery(_ battery: BatteryInfo, own: NSColor?, colors: Colors) -> NSColor {
-        let base = own ?? colors.neutral
-        return colors.semantic ? batteryTint(battery, foreground: base) : base
+        colors.semantic ? batteryTint(battery) : own ?? colors.neutral
     }
 
     private static func ringLevel(_ ring: Ring, _ r: Readings, colors: Colors) -> (Double, NSColor)? {

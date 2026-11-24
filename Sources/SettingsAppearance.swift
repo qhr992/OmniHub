@@ -41,7 +41,7 @@ extension SettingsPane {
                     PrefCheckbox("Show the figure while plugged in", key: StatusIcon.figureWhilePluggedKey, fallback: false)),
                 StatusIconColorsRow(),
                 PrefCheckbox("Also show it in the Dock (a click opens the card)", key: StatusIcon.dockTileKey, fallback: false),
-                hint("Laid out like the iPhone “Duo” status icon (after Status Trio). The ring's top shows the figure: the charge on battery, a bolt while charging, a plug when plugged in and not charging or full. The ring turns green on the adapter, red at 20 % or less and yellow in Low Power Mode; an amber dot at the top right means Keep Awake is on.")
+                hint("Laid out like the iPhone “Duo” status icon (after Status Trio). The ring's top shows the figure: the charge on battery, a bolt while charging, a plug when plugged in and not charging or full. The battery's colour follows the charge: green from 80 %, shading through yellow and orange to red at 20 % or less; the bolt and plug are green, the figure turns red at 10 % and yellow in Low Power Mode. An amber dot at the top right means Keep Awake is on.")
             ])
         ]
     }

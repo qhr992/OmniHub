@@ -206,12 +206,25 @@ enum StatusSelfTest {
             let image = StatusIcon.image(size: 40, readings: state, config: ringOnly, foreground: .white)
             return pixels(image, size: 80).map { count($0, near: tint) } ?? 0
         }
-        check("battery ring: red when low", batteryPixels(.sample(percent: 12), StatusIcon.Tint.low) > 20)
-        check("battery ring: green while charging", batteryPixels(.sample(percent: 50, charging: true, pluggedIn: true),
-                                                                  StatusIcon.Tint.charging) > 20)
-        check("battery ring: neither at 64% on battery",
-              batteryPixels(.sample(percent: 64), StatusIcon.Tint.low) == 0
-                && batteryPixels(.sample(percent: 64), StatusIcon.Tint.charging) == 0)
+        check("battery ring: red at 12 %", batteryPixels(.sample(percent: 12), StatusIcon.Tint.low) > 20)
+        check("battery ring: green at 92 %, charging or not",
+              batteryPixels(.sample(percent: 92), StatusIcon.Tint.charging) > 20
+                && batteryPixels(.sample(percent: 92, charging: true, pluggedIn: true), StatusIcon.Tint.charging) > 20)
+        check("battery ring: red while charging at 15 %",
+              batteryPixels(.sample(percent: 15, charging: true, pluggedIn: true), StatusIcon.Tint.low) > 20)
+        check("battery ring: neither red nor green at 50 %",
+              batteryPixels(.sample(percent: 50), StatusIcon.Tint.low) == 0
+                && batteryPixels(.sample(percent: 50), StatusIcon.Tint.charging) == 0)
+        // The charge colour moves steadily from red to green.
+        let hues = stride(from: 0, through: 100, by: 5).map { percent -> CGFloat in
+            let color = StatusIcon.chargeTint(percent).usingColorSpace(.sRGB) ?? .black
+            return color.hueComponent
+        }
+        check("charge colour: red to 20 %, green from 80 %, hue rising in between",
+              StatusIcon.chargeTint(5) == StatusIcon.Tint.low && StatusIcon.chargeTint(20) == StatusIcon.Tint.low
+                && StatusIcon.chargeTint(80) == StatusIcon.Tint.charging && StatusIcon.chargeTint(100) == StatusIcon.Tint.charging
+                && zip(hues, hues.dropFirst()).allSatisfy { $0.1 >= $0.0 - 0.001 },
+              hues.map { String(format: "%.2f", $0) }.joined(separator: " "))
         // Volume 50% lights two of the four dots, at menu bar size too.
         var half = readings
         half.volume = 0.5
@@ -226,6 +239,25 @@ enum StatusSelfTest {
             }
             check("volume 50%: dots lit \(lit.map { $0 ? "●" : "○" }.joined()) at \(Int(size)) pt",
                   lit == [true, true, false, false])
+        }
+
+        // The dots sit on the ring's circle: as low as the ring goes, and
+        // not cut off at the bottom of the menu bar icon.
+        for head in [true, false] {
+            let config = StatusIcon.Config(ring: head ? .battery : .cpu, center: .wifi, dots: .volume)
+            var state = readings
+            state.volume = 1
+            state.battery = .sample(percent: 83)
+            let rect = NSRect(x: 0, y: 0, width: 22, height: 22)
+            let lowest = StatusIcon.dotCentres(in: rect, head: head).map(\.y).min() ?? 99
+            let image = StatusIcon.image(size: 22, readings: state, config: config, foreground: .white)
+            if let rep = pixels(image, size: 88) {
+                let bottomRow = (0..<88).filter { (rep.colorAt(x: $0, y: 87)?.alphaComponent ?? 0) > 0.3 }.count
+                let nearBottom = (0..<88).filter { (rep.colorAt(x: $0, y: 84)?.alphaComponent ?? 0) > 0.3 }.count
+                check("dots \(head ? "under a head" : "without a head"): lowest at \(String(format: "%.1f", lowest)) pt, "
+                        + "touching the bottom \(nearBottom > 0), cut off \(bottomRow > 0)",
+                      lowest < 2 && bottomRow == 0)
+            }
         }
 
         // The figure on top stays inside the menu bar icon.
@@ -257,18 +289,16 @@ enum StatusSelfTest {
         ]
         let wrong = cases.filter { head($0.1) != $0.2 }.map { "\($0.0): \(head($0.1))" }
         check("head: figure on battery, bolt charging, plug on the adapter or without a battery", wrong.isEmpty, "\(wrong)")
-        check("head: the figure turns red at 10 % or less",
+        check("head: the figure turns red at 10 % or less, yellow in Low Power Mode, bolt and plug green",
               StatusIcon.debugHead(.sample(percent: 8)).color == StatusIcon.Tint.low
-                && StatusIcon.debugHead(.sample(percent: 15)).color != StatusIcon.Tint.low)
+                && StatusIcon.debugHead(.sample(percent: 15)).color != StatusIcon.Tint.low
+                && StatusIcon.debugHead(.sample(percent: 55, lowPowerMode: true)).color == StatusIcon.Tint.lowPower
+                && StatusIcon.debugHead(.sample(percent: 60, charging: true, pluggedIn: true)).color == StatusIcon.Tint.charging
+                && StatusIcon.debugHead(.sample(percent: 100, pluggedIn: true)).color == StatusIcon.Tint.charging)
         Prefs.set(StatusIcon.figureWhilePluggedKey, true)
         let plugged = (head(.sample(percent: 80, pluggedIn: true)), head(.sample(percent: 60, charging: true, pluggedIn: true)))
         Prefs.set(StatusIcon.figureWhilePluggedKey, nil)
         check("figure while plugged in: \(plugged.0) / \(plugged.1)", plugged == ("80", "[bolt.fill] 60"))
-        let states: [(BatteryInfo, NSColor)] = [(.sample(percent: 15), StatusIcon.Tint.low),
-                                                (.sample(percent: 55, lowPowerMode: true), StatusIcon.Tint.lowPower),
-                                                (.sample(percent: 80, pluggedIn: true), StatusIcon.Tint.charging)]
-        check("ring colours: red low, yellow Low Power Mode, green on the adapter",
-              states.allSatisfy { StatusIcon.batteryTint($0.0, foreground: .white) == $0.1 })
 
         if let pictures {
             // A sheet of every battery state, on the Dock plate.

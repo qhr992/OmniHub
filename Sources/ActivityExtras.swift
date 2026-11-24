@@ -135,9 +135,8 @@ final class BatteryTile: ActivitySurface {
     private(set) var debugText = ""
 
     func update(_ battery: BatteryInfo) {
-        // Green as a rule; red when low, yellow in Low Power Mode.
-        let tint = !battery.charging && battery.percent <= 20 ? StatusIcon.Tint.low
-            : battery.lowPowerMode ? StatusIcon.Tint.lowPower : StatusIcon.Tint.charging
+        // By charge, as on the status icon: green from 80 %, red at 20 %.
+        let tint = StatusIcon.batteryTint(battery)
         icon.image = NSImage(systemSymbolName: battery.symbol, accessibilityDescription: nil)?
             .withSymbolConfiguration(.init(pointSize: 14, weight: .semibold))
         icon.contentTintColor = tint
