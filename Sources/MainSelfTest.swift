@@ -89,6 +89,16 @@ enum MainSelfTest {
             }
         }
 
+        // Settings takes the whole window, with Back to the page before it.
+        _ = MainWindow.debugOpen(.activity)
+        let settingsWindow = MainWindow.debugOpen(.settings)
+        let settingsLeft = settingsWindow.debugHost.convert(settingsWindow.debugHost.bounds, to: nil).minX
+        check("settings: no page list, Back shown, the settings start at the left edge (x \(Int(settingsLeft)))",
+              !settingsWindow.debugListShown && settingsWindow.debugBackShown && settingsLeft < 40)
+        settingsWindow.debugBack()
+        let afterBack = settingsWindow.page
+        check("Back returns to the page before Settings (\(afterBack.rawValue)), with the list again",
+              afterBack == .activity && settingsWindow.debugListShown && !settingsWindow.debugBackShown)
         let small = MainWindow.debugOpen(.settings, size: NSSize(width: 860, height: 540))
         let host = small.debugHost.bounds.size
         check("settings at the smallest window: fills \(Int(host.width))×\(Int(host.height))",

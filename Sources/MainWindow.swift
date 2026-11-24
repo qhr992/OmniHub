@@ -23,6 +23,14 @@ final class MainWindow: NSWindow, NSWindowDelegate {
     private let host = MainHostView()
     private let placeholder = NSTextField(labelWithString: L("Open in the dock card"))
     private(set) var page: Page = .home
+    /// Where Back leads from Settings: the page shown before it.
+    private var beforeSettings: Page = .home
+    private let backButton = BackButton()
+    private let side = NSVisualEffectView()
+    private let edge = NSView()
+    /// Layout with the page list, and Settings' own (list hidden, Back shown).
+    private var withList: [NSLayoutConstraint] = []
+    private var settingsOnly: [NSLayoutConstraint] = []
     private weak var shown: NSView?
     private var scroll: NSScrollView?
 
@@ -92,11 +100,9 @@ final class MainWindow: NSWindow, NSWindowDelegate {
         root.layer?.backgroundColor = NSColor(srgbRed: 0.098, green: 0.102, blue: 0.122, alpha: 1).cgColor
 
         // Sidebar: frosted, under the traffic lights.
-        let side = NSVisualEffectView()
         side.material = .sidebar
         side.blendingMode = .behindWindow
         side.state = .followsWindowActiveState
-        let edge = NSView()
         edge.wantsLayer = true
         edge.layer?.backgroundColor = NSColor(white: 1, alpha: 0.07).cgColor
         let brand = NSTextField(labelWithString: "OmniHub")
@@ -110,7 +116,9 @@ final class MainWindow: NSWindow, NSWindowDelegate {
         host.wantsLayer = true
         host.onChange = { [weak self] in self?.syncPlaceholder() }
 
-        for view in [side, edge, titleLabel, host] as [NSView] {
+        backButton.target = self
+        backButton.action = #selector(goBack)
+        for view in [side, edge, titleLabel, host, backButton] as [NSView] {
             view.translatesAutoresizingMaskIntoConstraints = false
             root.addSubview(view)
         }
@@ -137,24 +145,52 @@ final class MainWindow: NSWindow, NSWindowDelegate {
             brand.bottomAnchor.constraint(equalTo: side.bottomAnchor, constant: -16),
 
             titleLabel.topAnchor.constraint(equalTo: root.topAnchor, constant: 12),
-            titleLabel.leadingAnchor.constraint(equalTo: edge.trailingAnchor, constant: 28),
+            // Back sits right of the traffic lights, level with the title.
+            backButton.leadingAnchor.constraint(equalTo: root.leadingAnchor, constant: 84),
+            backButton.centerYAnchor.constraint(equalTo: titleLabel.centerYAnchor),
             host.topAnchor.constraint(equalTo: root.topAnchor, constant: 58),
-            host.leadingAnchor.constraint(equalTo: edge.trailingAnchor, constant: 24),
             host.trailingAnchor.constraint(equalTo: root.trailingAnchor, constant: -24),
             host.bottomAnchor.constraint(equalTo: root.bottomAnchor, constant: -20),
             placeholder.centerXAnchor.constraint(equalTo: host.centerXAnchor),
             placeholder.centerYAnchor.constraint(equalTo: host.centerYAnchor)
         ])
+        withList = [
+            titleLabel.leadingAnchor.constraint(equalTo: edge.trailingAnchor, constant: 28),
+            host.leadingAnchor.constraint(equalTo: edge.trailingAnchor, constant: 24)
+        ]
+        settingsOnly = [
+            titleLabel.leadingAnchor.constraint(equalTo: backButton.trailingAnchor, constant: 14),
+            host.leadingAnchor.constraint(equalTo: root.leadingAnchor, constant: 20)
+        ]
+        NSLayoutConstraint.activate(withList)
         contentView = root
+    }
+
+    /// Settings takes the whole window: the page list goes, Back comes.
+    private func applyMode() {
+        let settings = page == .settings
+        side.isHidden = settings
+        edge.isHidden = settings
+        backButton.isHidden = !settings
+        NSLayoutConstraint.deactivate(settings ? withList : settingsOnly)
+        NSLayoutConstraint.activate(settings ? settingsOnly : withList)
+    }
+
+    /// Back from Settings to the page shown before it (⌘[ too).
+    @objc private func goBack() {
+        guard page == .settings else { return }
+        show(beforeSettings, activate: false)
     }
 
     // MARK: Pages
 
     private func show(_ target: Page, activate: Bool = true) {
+        if target == .settings, page != .settings { beforeSettings = page }
         page = target
         Prefs.set(Self.pageKey, target.rawValue)
         sidebar.select(Self.pages.firstIndex(of: target) ?? 0)
         titleLabel.stringValue = target.title
+        applyMode()
         install()
         guard activate, !FloatingDockPanel.headless else { return }
         let wasOpen = isVisible
@@ -298,6 +334,9 @@ final class MainWindow: NSWindow, NSWindowDelegate {
     }
 
     var debugSidebar: SidebarList { sidebar }
+    var debugListShown: Bool { !side.isHidden }
+    var debugBackShown: Bool { !backButton.isHidden }
+    func debugBack() { backButton.performClick(nil) }
     var debugHost: NSView { host }
     var debugShown: NSView? { shown }
     var debugPlaceholderShown: Bool { !placeholder.isHidden }
@@ -306,6 +345,63 @@ final class MainWindow: NSWindow, NSWindowDelegate {
         guard let index = Self.pages.firstIndex(of: target) else { return }
         sidebar.rows[index].performClick(nil)
     }
+}
+
+/// "‹ Back" as a quiet pill: the way out of Settings.
+final class BackButton: FocusButton {
+    private var hovering = false {
+        didSet { if hovering != oldValue { needsDisplay = true } }
+    }
+
+    init() {
+        super.init(frame: .zero)
+        isBordered = false
+        title = ""
+        image = nil
+        let text = NSMutableAttributedString()
+        let chevron = NSTextAttachment()
+        chevron.image = NSImage(systemSymbolName: "chevron.left", accessibilityDescription: nil)?
+            .withSymbolConfiguration(.init(pointSize: 11, weight: .bold))
+        text.append(NSAttributedString(attachment: chevron))
+        text.append(NSAttributedString(string: "  " + L("Back")))
+        text.addAttributes([.font: NSFont.systemFont(ofSize: 13, weight: .medium),
+                            .foregroundColor: NSColor(white: 1, alpha: 0.9)], range: NSRange(location: 0, length: text.length))
+        attributedTitle = text
+        setAccessibilityTitle(L("Back"))
+        keyEquivalent = "["
+        keyEquivalentModifierMask = .command
+        toolTip = L("Back") + "  ⌘["
+        isHidden = true
+        translatesAutoresizingMaskIntoConstraints = false
+        heightAnchor.constraint(equalToConstant: 28).isActive = true
+        widthAnchor.constraint(equalToConstant: intrinsicContentSize.width + 26).isActive = true
+    }
+
+    @available(*, unavailable)
+    required init?(coder: NSCoder) { fatalError() }
+
+    override func updateTrackingAreas() {
+        super.updateTrackingAreas()
+        trackingAreas.forEach(removeTrackingArea)
+        addTrackingArea(NSTrackingArea(rect: bounds, options: [.mouseEnteredAndExited, .activeAlways, .inVisibleRect],
+                                       owner: self, userInfo: nil))
+    }
+
+    override func mouseEntered(with event: NSEvent) { hovering = true }
+    override func mouseExited(with event: NSEvent) { hovering = false }
+
+    private var shape: NSBezierPath { NSBezierPath(roundedRect: bounds.insetBy(dx: 0.5, dy: 0.5), xRadius: 14, yRadius: 14) }
+
+    override func draw(_ dirtyRect: NSRect) {
+        NSColor(white: 1, alpha: isHighlighted ? 0.18 : hovering ? 0.12 : 0.07).setFill()
+        shape.fill()
+        NSColor(white: 1, alpha: 0.12).setStroke()
+        shape.stroke()
+        super.draw(dirtyRect)
+    }
+
+    override func drawFocusRingMask() { shape.fill() }
+    override var focusRingMaskBounds: NSRect { bounds }
 }
 
 /// The window's page area: notices when the card takes a page out of it.
