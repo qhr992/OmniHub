@@ -15,6 +15,8 @@ SOURCES=(
   Sources/main.swift
   Sources/Localization.swift
   Sources/L10nSelfTest.swift
+  Sources/UpdateChecker.swift
+  Sources/UpdateSelfTest.swift
   Sources/Support.swift
   Sources/HotKey.swift
   Sources/HotKeyCenter.swift
