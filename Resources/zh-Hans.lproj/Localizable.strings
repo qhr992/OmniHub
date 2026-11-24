@@ -482,7 +482,6 @@
 "Network" = "网络";
 "Charging" = "充电中";
 "Charged" = "已充满";
-"On power adapter" = "已接电源";
 "On battery" = "使用电池";
 "Until Turned Off" = "直到手动关闭";
 "1 Hour" = "1 小时";
@@ -508,7 +507,6 @@
 "Middle" = "中间";
 "Dots" = "圆点";
 "Also show it in the Dock (a click opens the card)" = "同时显示在程序坞（点击打开看板）";
-"The ring and the dots are levels. Battery turns green while charging, red when low and yellow in Low Power Mode; an amber dot at the top right means Keep Awake is on." = "外圈和圆点表示占比。电池充电时变绿，电量低时变红，低电量模式下变黄；右上角的橙色小点表示不息屏已开启。";
 "Status icon" = "状态图标";
 "Global Shortcuts" = "全局快捷键";
 "Appearance" = "外观";
@@ -528,3 +526,20 @@
 "Menu bar (dark)" = "菜单栏（深色）";
 "Dock ball" = "悬浮球";
 "macOS Dock" = "程序坞";
+"Plugged in, not charging" = "已接电源，未在充电";
+"Battery very low" = "电量严重不足";
+"Battery low" = "电量低";
+"Bottom as" = "底部样式";
+"Show the figure while plugged in" = "接电源时也显示电量数字";
+"Laid out like the iPhone “Duo” status icon (after Status Trio). The ring's top shows the figure: the charge on battery, a bolt while charging, a plug when plugged in and not charging or full. The ring turns green on the adapter, red at 20 % or less and yellow in Low Power Mode; an amber dot at the top right means Keep Awake is on." = "布局参考 iPhone「Duo」状态图标（经由 Status Trio）。外圈顶部显示：用电池时显示电量数字，充电时显示闪电，接着电源但未充电或已充满时显示插头。接电源时外圈变绿，电量 20% 及以下变红，低电量模式下变黄；右上角的橙色小点表示不息屏已开启。";
+"Arc" = "圆弧";
+"Automatic" = "自动";
+"Aurora" = "极光";
+"Sunset" = "日落";
+"Mint" = "薄荷";
+"Sakura" = "樱花";
+"Violet" = "紫罗兰";
+"Paper" = "纸白";
+"Custom" = "自定义";
+"Colours" = "配色";
+"Battery in state colours (green charging, red low, yellow in Low Power Mode)" = "电池按状态着色（充电绿、电量低红、低电量模式黄）";

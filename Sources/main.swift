@@ -225,13 +225,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     @objc private func refreshDockTile() {
         guard let view = dockTileView else { return }
-        view.image = StatusIcon.shared.image(size: 256, foreground: .white, plate: true)
+        view.image = StatusIcon.shared.image(size: 256, foreground: .white, plate: .square)
         NSApp.dockTile.display()
     }
 
-    /// A click on the Dock tile opens (or folds) the card.
+    /// A click on the Dock tile opens Home on the card (or folds it); a
+    /// hidden ball comes back first. (Not `toggle()`: that hides the ball.)
     func applicationShouldHandleReopen(_ sender: NSApplication, hasVisibleWindows flag: Bool) -> Bool {
-        FloatingDockPanel.toggle()
+        FloatingDockPanel.show()
+        FloatingDockPanel.open(.home)
         return false
     }
 
@@ -440,7 +442,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         case "open/terminal": FloatingDockPanel.open(.terminal)
         case "open/settings": FloatingDockPanel.open(.settings)
         case "open/settings/0", "open/settings/1", "open/settings/2", "open/settings/3",
-             "open/settings/4", "open/settings/5", "open/settings/6", "open/settings/7":
+             "open/settings/4", "open/settings/5", "open/settings/6", "open/settings/7", "open/settings/8":
             FloatingDockPanel.open(.settings, toggle: false, settingsTab: Int(command.suffix(1)))
         case "debug/terminal/connections", "debug/terminal/transfers", "debug/terminal/forwards",
              "debug/terminal/sftp", "debug/terminal/settings":
@@ -494,6 +496,24 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             try? diagnosticsText().write(to: Store.url("diagnostics.txt"), atomically: true, encoding: .utf8)
         case "snapshot":
             snapshotWindows()
+        case "debug/status-icon":
+            // What the menu bar icon is drawn from, and the icon at 10×.
+            let icon = StatusIcon.shared
+            try? "\(icon.readings)\n\(StatusIcon.Config.current)\n".write(to: Store.url("status-icon.txt"), atomically: true, encoding: .utf8)
+            let image = icon.image(size: 200, foreground: .white)
+            if let tiff = image.tiffRepresentation, let png = NSBitmapImageRep(data: tiff)?.representation(using: .png, properties: [:]) {
+                try? png.write(to: Store.url("status-icon.png"))
+            }
+        case "debug/screen":
+            // The whole screen as OmniHub sees it (menu bar icon, ball and
+            // all), for checks run where screencapture lacks the permission.
+            ScreenCapture.captureAllDisplays { captures in
+                for (index, capture) in captures.enumerated() {
+                    let rep = NSBitmapImageRep(cgImage: capture.image)
+                    try? rep.representation(using: .png, properties: [:])?
+                        .write(to: Store.url("screen-\(index).png"))
+                }
+            }
         // debug/…: exercise the capture flows without a human at the mouse.
         // `force` skips the permission gate (frames then show only the
         // wallpaper), which is enough to prove the plumbing.

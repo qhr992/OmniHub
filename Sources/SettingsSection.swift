@@ -149,7 +149,7 @@ final class StatusIconPreview: NSStackView {
         let icon = StatusIcon.shared
         menuLight.image = icon.image(size: 22, foreground: .labelColor)
         menuDark.image = icon.image(size: 22, foreground: .labelColor)
-        ball.image = icon.image(size: 88, foreground: .white, inset: 88 * 0.2)
-        dock.image = icon.image(size: 120, foreground: .white, plate: true)
+        ball.image = icon.image(size: 88, foreground: .white, plate: .circle, inset: 88 * 0.15)
+        dock.image = icon.image(size: 120, foreground: .white, plate: .square)
     }
 }

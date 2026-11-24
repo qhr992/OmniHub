@@ -23,6 +23,26 @@ struct BatteryInfo: Equatable {
 
     var isFull: Bool { pluggedIn && !charging && percent >= 95 }
 
+    /// Every state the battery can be shown in, most pressing first.
+    enum State {
+        case charging       // taking charge
+        case full           // on the adapter, charged
+        case held           // on the adapter but not charging (optimised charging, a charge limit, a weak adapter)
+        case critical       // on battery, 10 % or less
+        case lowPower       // on battery, Low Power Mode
+        case low            // on battery, 20 % or less
+        case normal         // on battery
+    }
+
+    var state: State {
+        if charging { return .charging }
+        if pluggedIn { return percent >= 95 ? .full : .held }
+        if percent <= 10 { return .critical }
+        if lowPowerMode { return .lowPower }
+        if percent <= 20 { return .low }
+        return .normal
+    }
+
     /// Full-charge capacity against design, 0…1.
     var health: Double? {
         guard let maxCapacity, let designCapacity, designCapacity > 0 else { return nil }
@@ -35,12 +55,26 @@ struct BatteryInfo: Equatable {
         return voltage * amperage
     }
 
-    /// "Charging", "Charged", "On power adapter", "On battery".
     var stateText: String {
-        if charging { return L("Charging") }
-        if isFull { return L("Charged") }
-        if pluggedIn { return L("On power adapter") }
-        return L("On battery")
+        switch state {
+        case .charging: return L("Charging")
+        case .full: return L("Charged")
+        case .held: return L("Plugged in, not charging")
+        case .critical: return L("Battery very low")
+        case .lowPower: return L("Low Power Mode")
+        case .low: return L("Battery low")
+        case .normal: return L("On battery")
+        }
+    }
+
+    /// The small sign shown next to the figure, if the state has one.
+    var stateSymbol: String? {
+        switch state {
+        case .charging: return "bolt.fill"
+        case .full, .held: return "powerplug.fill"
+        case .critical: return "exclamationmark"
+        case .lowPower, .low, .normal: return nil
+        }
     }
 
     /// SF Symbol for the charge and state.
@@ -83,8 +117,9 @@ struct BatteryInfo: Equatable {
     }
 
     /// Test hook: a battery in a given state.
-    static func sample(percent: Int, charging: Bool = false, pluggedIn: Bool = false) -> BatteryInfo {
-        BatteryInfo(percent: percent, charging: charging, pluggedIn: pluggedIn, minutesLeft: nil, lowPowerMode: false)
+    static func sample(percent: Int, charging: Bool = false, pluggedIn: Bool = false,
+                       lowPowerMode: Bool = false) -> BatteryInfo {
+        BatteryInfo(percent: percent, charging: charging, pluggedIn: pluggedIn, minutesLeft: nil, lowPowerMode: lowPowerMode)
     }
 
     /// AppleSmartBattery: the same figures System Information shows.

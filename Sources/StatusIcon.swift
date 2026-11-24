@@ -35,7 +35,9 @@ final class StatusIcon {
         }
     }
 
-    enum WiFi: Equatable { case off, disconnected, wired, bars(Int) }
+    /// `connected`: joined, strength unknown — macOS gives the signal
+    /// strength only to apps with Location access.
+    enum WiFi: Equatable { case off, disconnected, wired, connected, bars(Int) }
 
     /// What the icon shows; read together so all parts agree.
     struct Readings: Equatable {
@@ -119,8 +121,12 @@ final class StatusIcon {
         let wired = wiredUp(except: interface.interfaceName)
         guard interface.powerOn() else { return wired ? .wired : .off }
         let rssi = interface.rssiValue()
-        guard rssi != 0 else { return wired ? .wired : .disconnected }
-        return .bars(rssi >= -60 ? 3 : rssi >= -70 ? 2 : 1)
+        if rssi != 0 { return .bars(rssi >= -60 ? 3 : rssi >= -70 ? 2 : 1) }
+        // No strength without Location access: an address on the Wi-Fi
+        // port still means it is joined.
+        let name = interface.interfaceName
+        if SystemStats.localAddresses().contains(where: { $0.name == name }) { return .connected }
+        return wired ? .wired : .disconnected
     }
 
     /// An Ethernet port (`en*`, not the Wi-Fi one) has an address.
@@ -163,106 +169,287 @@ final class StatusIcon {
         static let awake = NSColor(srgbRed: 1.0, green: 0.70, blue: 0.25, alpha: 1)
     }
 
+    /// What the icon sits on: nothing (menu bar), a rounded square (Dock)
+    /// or a disc (the dock ball). On a plate the palette's background and
+    /// middle colours apply; without one the neutral parts follow the menu
+    /// bar's own colour.
+    enum Plate { case none, square, circle }
+
     /// The icon at `size` points. `foreground` draws the neutral parts
     /// (a dynamic colour follows the menu bar's appearance, since the image
-    /// draws when shown); `plate` fills a rounded square behind it (Dock);
-    /// `inset` keeps it clear of a round mask (the dock ball).
-    static func image(size: CGFloat, readings: Readings, config: Config,
-                      foreground: NSColor, plate: Bool = false, inset: CGFloat = 0) -> NSImage {
+    /// draws when shown); `inset` keeps it clear of a round mask.
+    static func image(size: CGFloat, readings: Readings, config: Config, foreground: NSColor,
+                      plate: Plate = .none, inset: CGFloat = 0, palette: Palette = .current) -> NSImage {
         NSImage(size: NSSize(width: size, height: size), flipped: false) { rect in
             var bounds = rect.insetBy(dx: inset, dy: inset)
-            if plate {
+            let base = palette.plate ?? Palette.defaultPlate
+            let top = base.blended(withFraction: 0.18, of: .white) ?? base
+            let bottom = base.blended(withFraction: 0.35, of: .black) ?? base
+            switch plate {
+            case .none:
+                break
+            case .square:
                 let square = NSBezierPath(roundedRect: rect.insetBy(dx: size * 0.06, dy: size * 0.06),
                                           xRadius: size * 0.2, yRadius: size * 0.2)
-                NSGradient(starting: NSColor(srgbRed: 0.16, green: 0.17, blue: 0.24, alpha: 1),
-                           ending: NSColor(srgbRed: 0.05, green: 0.05, blue: 0.09, alpha: 1))?.draw(in: square, angle: -90)
+                NSGradient(starting: top, ending: bottom)?.draw(in: square, angle: -90)
                 bounds = rect.insetBy(dx: size * 0.17, dy: size * 0.17)
+            case .circle:
+                NSGradient(starting: top, ending: bottom)?.draw(in: NSBezierPath(ovalIn: rect), angle: -90)
             }
-            draw(in: bounds, readings: readings, config: config, foreground: foreground)
+            let colors = Colors(palette: palette, foreground: foreground, onPlate: plate != .none)
+            draw(in: bounds, readings: readings, config: config, colors: colors)
             return true
         }
     }
 
-    private static func draw(in rect: NSRect, readings: Readings, config: Config, foreground: NSColor) {
-        let side = min(rect.width, rect.height)
-        let line = max(1.4, side * 0.095)
-        let center = NSPoint(x: rect.midX, y: rect.midY)
-        let radius = side / 2 - line / 2
+    /// The colours one drawing uses.
+    private struct Colors {
+        let neutral: NSColor        // tracks, unlit dots
+        let center: NSColor
+        let ring: NSColor?          // nil: by what the ring shows
+        let dots: NSColor?
+        let semantic: Bool
 
-        // Ring: a dim track, the level clockwise from the top.
-        if let (level, tint) = ringLevel(config.ring, readings, foreground: foreground) {
-            let track = NSBezierPath()
-            track.appendArc(withCenter: center, radius: radius, startAngle: 0, endAngle: 360)
-            track.lineWidth = line
-            foreground.withAlphaComponent(0.22).setStroke()
-            track.stroke()
-            if level > 0.005 {
-                let arc = NSBezierPath()
-                arc.appendArc(withCenter: center, radius: radius, startAngle: 90,
-                              endAngle: 90 - 360 * CGFloat(min(level, 1)), clockwise: true)
-                arc.lineWidth = line
-                arc.lineCapStyle = .round
-                tint.setStroke()
-                arc.stroke()
+        init(palette: Palette, foreground: NSColor, onPlate: Bool) {
+            center = onPlate ? (palette.center ?? foreground) : foreground
+            neutral = onPlate ? center : foreground
+            ring = palette.ring
+            dots = palette.dots
+            semantic = palette.semantic
+        }
+    }
+
+    // The layout follows the iPhone "Duo" status icon, by way of Status Trio
+    // (github.com/lingyired/status-trio, Apache-2.0), drawn here in our own
+    // code: an open ring whose top gap holds a head (a figure or a sign),
+    // a glyph in the middle, and dots (or a short arc) in the bottom gap.
+
+    /// The ring runs clockwise from bottom left (225°) over the top to
+    /// bottom right (−45°); the bottom 90° are left open for the dots.
+    private static let ringStart: CGFloat = 225
+    private static let ringSweep: CGFloat = 270
+
+    /// Bottom style: dots (0) or a short arc (1).
+    static let bottomStyleKey = "statusIcon.bottomStyle"
+    /// Show the figure, not the plug / bolt, while on the adapter.
+    static let figureWhilePluggedKey = "statusIcon.figureWhilePlugged"
+
+    /// Where the ring sits in `rect`. With a head, the ring is a little
+    /// smaller and lower, so the figure on its top stays inside.
+    private struct Geometry {
+        let side: CGFloat, line: CGFloat, center: NSPoint, radius: CGFloat
+
+        init(_ rect: NSRect, head: Bool) {
+            side = min(rect.width, rect.height)
+            line = max(1.4, side * 0.1)
+            if head {
+                radius = side / 2 - line / 2 - side * 0.05
+                center = NSPoint(x: rect.midX, y: rect.maxY - radius - side * 0.14)
+            } else {
+                radius = side / 2 - line / 2
+                center = NSPoint(x: rect.midX, y: rect.midY)
+            }
+        }
+    }
+
+    /// Centres of the four bottom dots (test hook).
+    static func dotCentres(in rect: NSRect, head: Bool) -> [NSPoint] {
+        dotCentres(Geometry(rect, head: head))
+    }
+
+    private static func dotCentres(_ geometry: Geometry) -> [NSPoint] {
+        let (center, radius) = (geometry.center, geometry.radius)
+        return [241, 260.5, 279.5, 299].map { (degrees: CGFloat) in
+            let angle = degrees * .pi / 180
+            return NSPoint(x: center.x + cos(angle) * radius * 0.9, y: center.y + sin(angle) * radius * 0.9)
+        }
+    }
+
+    private static func draw(in rect: NSRect, readings: Readings, config: Config, colors: Colors) {
+        // Head and ring.
+        let head = ringHead(config.ring, readings, colors: colors)
+        let geometry = Geometry(rect, head: head != nil)
+        let (side, line, center, radius) = (geometry.side, geometry.line, geometry.center, geometry.radius)
+        if let (level, tint) = ringLevel(config.ring, readings, colors: colors) {
+            // The gap at the top fits the head, with a little air.
+            let headWidth = head.map { headSize($0, side: side).width } ?? 0
+            let gap = head == nil ? 0 : min(70, (headWidth / 2 + line * 0.9) / radius * 180 / .pi)
+            let usable = ringSweep - 2 * gap
+            let filled = usable * CGFloat(min(max(level, 0), 1))
+            let track = (colors.ring ?? colors.neutral).withAlphaComponent(0.25)
+            // Left part: 225° → 90°+gap; right part: 90°−gap → −45°.
+            let left = ringStart - 90 - gap
+            func arc(from: CGFloat, sweep: CGFloat, _ color: NSColor) {
+                guard sweep > 0.1 else { return }
+                let path = NSBezierPath()
+                path.appendArc(withCenter: center, radius: radius, startAngle: from, endAngle: from - sweep, clockwise: true)
+                path.lineWidth = line
+                path.lineCapStyle = .round
+                color.setStroke()
+                path.stroke()
+            }
+            arc(from: ringStart, sweep: left, track)
+            arc(from: 90 - gap, sweep: left, track)
+            arc(from: ringStart, sweep: min(filled, left), tint)
+            if filled > left { arc(from: 90 - gap, sweep: filled - left, tint) }
+            if let head { drawHead(head, at: NSPoint(x: center.x, y: center.y + radius), side: side) }
+        }
+
+        // Bottom: four dots along the open part of the ring, or an arc.
+        let hasBottom = config.dots != .none
+        if hasBottom, let (level, tint) = dotsLevel(config.dots, readings, colors: colors) {
+            let unlit = (colors.dots ?? colors.neutral).withAlphaComponent(0.25)
+            if Prefs.int(bottomStyleKey, 0) == 1 {
+                let path = { (sweep: CGFloat) -> NSBezierPath in
+                    let path = NSBezierPath()
+                    path.appendArc(withCenter: center, radius: radius * 0.9, startAngle: 241, endAngle: 241 + sweep)
+                    path.lineWidth = line * 0.85
+                    path.lineCapStyle = .round
+                    return path
+                }
+                unlit.setStroke()
+                path(58).stroke()
+                if level > 0.01 {
+                    tint.setStroke()
+                    path(58 * CGFloat(min(level, 1))).stroke()
+                }
+            } else {
+                let dot = max(2.0, line * 1.15)
+                let lit = level <= 0 ? 0 : Int((level * 4).rounded(.up))
+                for (index, point) in dotCentres(geometry).enumerated() {
+                    (index < lit ? tint : unlit).setFill()
+                    NSBezierPath(ovalIn: NSRect(x: point.x - dot / 2, y: point.y - dot / 2, width: dot, height: dot)).fill()
+                }
             }
         }
 
-        // Dots: five, filled up to the level, near the bottom.
-        let hasDots = config.dots != .none
-        if hasDots, let (level, tint) = dotsLevel(config.dots, readings, foreground: foreground) {
-            let dot = max(1.3, side * 0.085)
-            let gap = dot * 0.55
-            let width = dot * 5 + gap * 4
-            let y = rect.minY + side * 0.2
-            let lit = Int((level * 5).rounded(.up))
-            for index in 0..<5 {
-                let x = center.x - width / 2 + CGFloat(index) * (dot + gap)
-                (index < lit ? tint : foreground.withAlphaComponent(0.25)).setFill()
-                NSBezierPath(ovalIn: NSRect(x: x, y: y, width: dot, height: dot)).fill()
-            }
-        }
+        // Middle.
+        let box = side * 0.5
+        let middle = NSRect(x: center.x - box / 2, y: center.y - box / 2 - side * 0.03, width: box, height: box)
+        drawCenter(config.center, readings, in: middle, foreground: colors.center)
 
-        // Middle: a glyph or a number, raised a little when dots sit below.
-        let middle = NSRect(x: center.x - side * 0.3, y: center.y - side * 0.3 + (hasDots ? side * 0.08 : 0),
-                            width: side * 0.6, height: side * 0.6)
-        drawCenter(config.center, readings, in: middle, foreground: foreground)
-
-        // Keep Awake: a small amber dot at the top right.
+        // Keep Awake: a small amber dot in the top right corner.
         if readings.keepAwake {
-            let dot = max(2.5, side * 0.17)
+            let dot = max(2.5, side * 0.15)
             Tint.awake.setFill()
             NSBezierPath(ovalIn: NSRect(x: rect.maxX - dot, y: rect.maxY - dot, width: dot, height: dot)).fill()
         }
     }
 
-    static func batteryTint(_ battery: BatteryInfo, foreground: NSColor) -> NSColor {
-        if battery.charging || battery.isFull { return Tint.charging }
-        if battery.percent <= 20 { return Tint.low }
-        if battery.lowPowerMode { return Tint.lowPower }
-        return foreground
+    /// What sits in the ring's top gap.
+    private struct Head {
+        var text: String?
+        var symbol: String?
+        var color: NSColor
     }
 
-    private static func ringLevel(_ ring: Ring, _ r: Readings, foreground: NSColor) -> (Double, NSColor)? {
+    private static func ringHead(_ ring: Ring, _ r: Readings, colors: Colors) -> Head? {
+        func figure(_ value: Double?) -> Head {
+            Head(text: value.map { "\(Int(($0 * 100).rounded()))" } ?? "–", symbol: nil, color: colors.center)
+        }
         switch ring {
         case .none: return nil
+        case .cpu: return figure(r.cpu)
+        case .memory: return figure(r.memory)
+        case .disk: return figure(r.disk)
         case .battery:
-            guard let battery = r.battery else { return nil }
-            return (Double(battery.percent) / 100, batteryTint(battery, foreground: foreground))
-        case .cpu: return (r.cpu ?? 0, Tint.cpu)
-        case .memory: return (r.memory ?? 0, Tint.memory)
-        case .disk: return (r.disk ?? 0, Tint.disk)
+            // No battery (a desktop Mac): always on the adapter.
+            guard let battery = r.battery else { return Head(text: nil, symbol: "powerplug.fill", color: colors.center) }
+            let text = "\(battery.percent)"
+            let warn = colors.semantic ? Tint.low : colors.center
+            switch battery.state {
+            case .charging:
+                return Prefs.bool(figureWhilePluggedKey, false)
+                    ? Head(text: text, symbol: "bolt.fill", color: colors.center)
+                    : Head(text: nil, symbol: "bolt.fill", color: colors.center)
+            case .full, .held:
+                return Prefs.bool(figureWhilePluggedKey, false)
+                    ? Head(text: text, symbol: nil, color: colors.center)
+                    : Head(text: nil, symbol: "powerplug.fill", color: colors.center)
+            case .critical: return Head(text: text, symbol: nil, color: warn)
+            case .lowPower, .low, .normal: return Head(text: text, symbol: nil, color: colors.center)
+            }
         }
     }
 
-    private static func dotsLevel(_ dots: Dots, _ r: Readings, foreground: NSColor) -> (Double, NSColor)? {
+    /// Test hook: the head for a battery (text, sign, colour).
+    static func debugHead(_ battery: BatteryInfo?, palette: Palette = Palette()) -> (text: String?, symbol: String?, color: NSColor) {
+        var readings = Readings()
+        readings.battery = battery
+        let head = ringHead(.battery, readings, colors: Colors(palette: palette, foreground: .white, onPlate: true))
+        return (head?.text, head?.symbol, head?.color ?? .clear)
+    }
+
+    private static func headFont(side: CGFloat) -> NSFont {
+        let size = side * 0.3
+        let font = NSFont.systemFont(ofSize: size, weight: .heavy)
+        return font.fontDescriptor.withDesign(.rounded).flatMap { NSFont(descriptor: $0, size: size) } ?? font
+    }
+
+    private static func headSize(_ head: Head, side: CGFloat) -> NSSize {
+        let font = headFont(side: side)
+        var width: CGFloat = 0
+        if let text = head.text { width += (text as NSString).size(withAttributes: [.font: font]).width }
+        if head.symbol != nil { width += side * (head.text == nil ? 0.3 : 0.2) + (head.text == nil ? 0 : side * 0.02) }
+        return NSSize(width: width, height: side * 0.3)
+    }
+
+    private static func drawHead(_ head: Head, at point: NSPoint, side: CGFloat) {
+        let size = headSize(head, side: side)
+        var x = point.x - size.width / 2
+        if let symbol = head.symbol {
+            let width = side * (head.text == nil ? 0.3 : 0.2)
+            drawSymbol(symbol, value: nil, in: NSRect(x: x, y: point.y - side * 0.18, width: width, height: side * 0.36),
+                       foreground: head.color)
+            x += width + (head.text == nil ? 0 : side * 0.02)
+        }
+        if let text = head.text {
+            let attributes: [NSAttributedString.Key: Any] = [.font: headFont(side: side), .foregroundColor: head.color]
+            let measured = (text as NSString).size(withAttributes: attributes)
+            (text as NSString).draw(at: NSPoint(x: x, y: point.y - measured.height / 2), withAttributes: attributes)
+        }
+    }
+
+    /// Battery colours: green on the adapter, red when low (10 % or 20 %),
+    /// yellow in Low Power Mode, else `foreground`.
+    static func batteryTint(_ battery: BatteryInfo, foreground: NSColor) -> NSColor {
+        switch battery.state {
+        case .charging, .full, .held: return Tint.charging
+        case .critical, .low: return Tint.low
+        case .lowPower: return Tint.lowPower
+        case .normal: return foreground
+        }
+    }
+
+    /// The battery's colour: the state colours when they are on, else the
+    /// part's own colour.
+    private static func battery(_ battery: BatteryInfo, own: NSColor?, colors: Colors) -> NSColor {
+        let base = own ?? colors.neutral
+        return colors.semantic ? batteryTint(battery, foreground: base) : base
+    }
+
+    private static func ringLevel(_ ring: Ring, _ r: Readings, colors: Colors) -> (Double, NSColor)? {
+        switch ring {
+        case .none: return nil
+        case .battery:
+            // No battery: an empty track under the plug.
+            guard let info = r.battery else { return (0, colors.neutral) }
+            return (Double(info.percent) / 100, battery(info, own: colors.ring, colors: colors))
+        case .cpu: return (r.cpu ?? 0, colors.ring ?? Tint.cpu)
+        case .memory: return (r.memory ?? 0, colors.ring ?? Tint.memory)
+        case .disk: return (r.disk ?? 0, colors.ring ?? Tint.disk)
+        }
+    }
+
+    private static func dotsLevel(_ dots: Dots, _ r: Readings, colors: Colors) -> (Double, NSColor)? {
         switch dots {
         case .none: return nil
-        case .volume: return (r.muted ? 0 : Double(r.volume ?? 0), foreground)
-        case .cpu: return (r.cpu ?? 0, Tint.cpu)
-        case .memory: return (r.memory ?? 0, Tint.memory)
+        case .volume: return (r.muted ? 0 : Double(r.volume ?? 0), colors.dots ?? colors.neutral)
+        case .cpu: return (r.cpu ?? 0, colors.dots ?? Tint.cpu)
+        case .memory: return (r.memory ?? 0, colors.dots ?? Tint.memory)
         case .battery:
-            guard let battery = r.battery else { return nil }
-            return (Double(battery.percent) / 100, batteryTint(battery, foreground: foreground))
+            guard let info = r.battery else { return nil }
+            return (Double(info.percent) / 100, battery(info, own: colors.dots, colors: colors))
         }
     }
 
@@ -279,6 +466,7 @@ final class StatusIcon {
                 case .off: return ("wifi.slash", nil)
                 case .disconnected: return ("wifi.exclamationmark", nil)
                 case .wired: return ("cable.connector.horizontal", nil)
+                case .connected: return ("wifi", nil)
                 case .bars(let bars): return ("wifi", Double(bars) / 3)
                 }
             }()
@@ -326,7 +514,7 @@ final class StatusIcon {
     }
 
     /// The icon as the current settings and readings make it.
-    func image(size: CGFloat, foreground: NSColor, plate: Bool = false, inset: CGFloat = 0) -> NSImage {
+    func image(size: CGFloat, foreground: NSColor, plate: Plate = .none, inset: CGFloat = 0) -> NSImage {
         Self.image(size: size, readings: readings, config: .current, foreground: foreground, plate: plate, inset: inset)
     }
 

@@ -67,6 +67,7 @@ SOURCES=(
   Sources/Battery.swift
   Sources/TopApps.swift
   Sources/StatusIcon.swift
+  Sources/StatusIconColors.swift
   Sources/SettingsSection.swift
   Sources/SettingsAppearance.swift
   Sources/StatusSelfTest.swift

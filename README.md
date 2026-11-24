@@ -57,7 +57,9 @@ A menu bar suite for macOS. Screenshots, pinned images, clipboard history, Now P
 **Appearance.**
 - The card's background opacity can be lowered to show the blurred desktop behind it.
 - The menu bar can show the runner or the status icon; the dock ball can show the logo or the status icon; the status icon can also be shown in the Dock.
-- The status icon is a live round icon: its ring, middle and dots each show what you pick (battery, CPU, memory, disk, Wi-Fi, network, volume).
+- The status icon is a live icon laid out like the iPhone "Duo" status icon, by way of [Status Trio](https://github.com/lingyired/status-trio) (Apache-2.0); OmniHub draws it with its own code. An open ring with a head at the top, a glyph in the middle and dots (or an arc) at the bottom each show what you pick (battery, CPU, memory, disk, Wi-Fi, network, volume).
+- Battery on the ring: the charge as a figure on battery, a bolt while charging, a plug when plugged in and not charging or full (or the figure, if you prefer); green on the adapter, red at 20 % or less (the figure too at 10 % or less), yellow in Low Power Mode. A Mac without a battery shows the plug.
+- Colours: themes (Automatic, Aurora, Sunset, Mint, Sakura, Violet, Paper) or your own colour for the ring, middle, dots and background.
 
 ## Installation
 

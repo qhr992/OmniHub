@@ -986,7 +986,8 @@ final class FloatingDockPanel: NSPanel, EscDismissable {
         ballShowsStatus = StatusIcon.onBall
         if ballShowsStatus {
             // Drawn at twice the ball's size: the layer takes it as pixels.
-            iconImage = StatusIcon.shared.image(size: Self.iconSize * 2, foreground: .white, inset: Self.iconSize * 0.2)
+            iconImage = StatusIcon.shared.image(size: Self.iconSize * 2, foreground: .white, plate: .circle,
+                                                inset: Self.iconSize * 2 * 0.15)
             ball.toolTip = StatusIcon.shared.summary
             refresh()
             return

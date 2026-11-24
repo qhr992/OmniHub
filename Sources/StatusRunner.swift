@@ -39,7 +39,7 @@ final class StatusRunner {
                 interval = 0
                 reschedule()
             }
-            button?.image = StatusIcon.shared.image(size: 18, foreground: .labelColor)
+            button?.image = StatusIcon.shared.image(size: 22, foreground: .labelColor)
             button?.toolTip = StatusIcon.shared.summary
             return
         }

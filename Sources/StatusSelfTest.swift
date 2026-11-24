@@ -168,6 +168,14 @@ enum StatusSelfTest {
     }
 
     private static func icon(pictures: URL?) {
+        // Joined to Wi-Fi (an address on it) reads as connected, with or
+        // without the signal strength.
+        let wifi = StatusIcon.readWiFi()
+        let joined = SystemStats.localAddresses().contains { $0.name == "en0" }
+        check("Wi-Fi: \(wifi) (en0 has an address: \(joined))", !joined || {
+            if case .bars = wifi { return true }
+            return wifi == .connected
+        }())
         var readings = StatusIcon.Readings()
         readings.cpu = 0.4
         readings.memory = 0.7
@@ -204,6 +212,80 @@ enum StatusSelfTest {
         check("battery ring: neither at 64% on battery",
               batteryPixels(.sample(percent: 64), StatusIcon.Tint.low) == 0
                 && batteryPixels(.sample(percent: 64), StatusIcon.Tint.charging) == 0)
+        // Volume 50% lights two of the four dots, at menu bar size too.
+        var half = readings
+        half.volume = 0.5
+        for size in [22, 40] as [CGFloat] {
+            let config = StatusIcon.Config(ring: .battery, center: .wifi, dots: .volume)
+            let image = StatusIcon.image(size: size, readings: half, config: config, foreground: .white)
+            let scale: CGFloat = 4
+            guard let rep = pixels(image, size: Int(size * scale)) else { continue }
+            let lit = StatusIcon.dotCentres(in: NSRect(x: 0, y: 0, width: size, height: size), head: true).map { point -> Bool in
+                let pixel = rep.colorAt(x: Int(point.x * scale), y: Int((size - point.y) * scale))
+                return (pixel?.alphaComponent ?? 0) > 0.8
+            }
+            check("volume 50%: dots lit \(lit.map { $0 ? "●" : "○" }.joined()) at \(Int(size)) pt",
+                  lit == [true, true, false, false])
+        }
+
+        // The figure on top stays inside the menu bar icon.
+        do {
+            let config = StatusIcon.Config(ring: .battery, center: .wifi, dots: .volume)
+            var state = readings
+            state.battery = .sample(percent: 83)
+            let image = StatusIcon.image(size: 22, readings: state, config: config, foreground: .white)
+            if let rep = pixels(image, size: 88) {
+                let topRow = (0..<88).filter { (rep.colorAt(x: $0, y: 0)?.alphaComponent ?? 0) > 0.3 }.count
+                check("the figure on top is not cut off (\(topRow) pixels on the top edge)", topRow == 0)
+            }
+        }
+
+        // The ring's head for every battery state.
+        func head(_ battery: BatteryInfo?) -> String {
+            let head = StatusIcon.debugHead(battery)
+            return [head.symbol.map { "[\($0)]" }, head.text].compactMap { $0 }.joined(separator: " ")
+        }
+        let cases: [(String, BatteryInfo?, String)] = [
+            ("on battery", .sample(percent: 76), "76"),
+            ("low", .sample(percent: 15), "15"),
+            ("very low", .sample(percent: 8), "8"),
+            ("Low Power Mode", .sample(percent: 55, lowPowerMode: true), "55"),
+            ("charging", .sample(percent: 60, charging: true, pluggedIn: true), "[bolt.fill]"),
+            ("plugged in, not charging", .sample(percent: 80, pluggedIn: true), "[powerplug.fill]"),
+            ("charged", .sample(percent: 100, pluggedIn: true), "[powerplug.fill]"),
+            ("no battery", nil, "[powerplug.fill]")
+        ]
+        let wrong = cases.filter { head($0.1) != $0.2 }.map { "\($0.0): \(head($0.1))" }
+        check("head: figure on battery, bolt charging, plug on the adapter or without a battery", wrong.isEmpty, "\(wrong)")
+        check("head: the figure turns red at 10 % or less",
+              StatusIcon.debugHead(.sample(percent: 8)).color == StatusIcon.Tint.low
+                && StatusIcon.debugHead(.sample(percent: 15)).color != StatusIcon.Tint.low)
+        Prefs.set(StatusIcon.figureWhilePluggedKey, true)
+        let plugged = (head(.sample(percent: 80, pluggedIn: true)), head(.sample(percent: 60, charging: true, pluggedIn: true)))
+        Prefs.set(StatusIcon.figureWhilePluggedKey, nil)
+        check("figure while plugged in: \(plugged.0) / \(plugged.1)", plugged == ("80", "[bolt.fill] 60"))
+        let states: [(BatteryInfo, NSColor)] = [(.sample(percent: 15), StatusIcon.Tint.low),
+                                                (.sample(percent: 55, lowPowerMode: true), StatusIcon.Tint.lowPower),
+                                                (.sample(percent: 80, pluggedIn: true), StatusIcon.Tint.charging)]
+        check("ring colours: red low, yellow Low Power Mode, green on the adapter",
+              states.allSatisfy { StatusIcon.batteryTint($0.0, foreground: .white) == $0.1 })
+
+        if let pictures {
+            // A sheet of every battery state, on the Dock plate.
+            let sheet = NSImage(size: NSSize(width: 128 * 4, height: 128 * 2), flipped: false) { _ in
+                for (index, item) in cases.enumerated() {
+                    var state = readings
+                    state.battery = item.1
+                    let config = StatusIcon.Config(ring: .battery, center: .wifi, dots: .volume)
+                    StatusIcon.image(size: 128, readings: state, config: config, foreground: .white, plate: .square)
+                        .draw(in: NSRect(x: CGFloat(index % 4) * 128, y: CGFloat(1 - index / 4) * 128, width: 128, height: 128))
+                }
+                return true
+            }
+            if let tiff = sheet.tiffRepresentation, let png = NSBitmapImageRep(data: tiff)?.representation(using: .png, properties: [:]) {
+                try? png.write(to: pictures.appendingPathComponent("battery-states.png"))
+            }
+        }
         var awake = readings
         awake.keepAwake = true
         let dot = pixels(StatusIcon.image(size: 40, readings: awake, config: ringOnly, foreground: .white), size: 80)
@@ -217,7 +299,7 @@ enum StatusSelfTest {
         let onBall = FloatingDockPanel.debugBallShowsStatus
         if let pictures {
             let config = StatusIcon.Config(ring: .battery, center: .wifi, dots: .volume)
-            let sheet = StatusIcon.image(size: 128, readings: readings, config: config, foreground: .white, plate: true)
+            let sheet = StatusIcon.image(size: 128, readings: readings, config: config, foreground: .white, plate: .square)
             if let tiff = sheet.tiffRepresentation, let rep = NSBitmapImageRep(data: tiff),
                let png = rep.representation(using: .png, properties: [:]) {
                 try? png.write(to: pictures.appendingPathComponent("status-icon.png"))

@@ -146,7 +146,7 @@ final class BatteryTile: ActivitySurface {
         if let minutes = battery.minutesLeft {
             stateParts.append(battery.charging ? L("full in %@", Self.duration(minutes)) : L("%@ left", Self.duration(minutes)))
         }
-        if battery.lowPowerMode { stateParts.append(L("Low Power Mode")) }
+        if battery.lowPowerMode, battery.state != .lowPower { stateParts.append(L("Low Power Mode")) }
         state.stringValue = stateParts.joined(separator: " · ")
         bar.level = Double(battery.percent) / 100
         bar.tint = tint
