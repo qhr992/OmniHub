@@ -8,6 +8,7 @@ A menu bar suite for macOS. Screenshots, pinned images, clipboard history, Now P
 - Universal binary (Apple Silicon and Intel), macOS 14 or later
 - About 9 MB installed
 - English and Simplified Chinese interface: **Settings → General → Language** (English by default; takes effect after a restart)
+- Checks for new versions once a day and offers to download and install them (**Settings → General → Updates**, or **Check for Updates…** in the menu bar)
 
 ## Features
 
@@ -122,7 +123,7 @@ The boot animation and illustrations are generated from the sources in `Tools/bo
 | Settings | UserDefaults domain `com.local.omnihub` |
 | Passwords | Login Keychain, service `com.local.omnihub.vault`, one item for all of them (macOS asks once, and once again after an update) |
 
-OmniHub makes network requests only to fetch lyrics (`music.163.com`, `lrclib.net`) and, if you turn it on, to look up your public IP address (`api.ipify.org`).
+OmniHub makes network requests only to fetch lyrics (`music.163.com`, `lrclib.net`), to check for updates once a day (the release feed and downloads on `github.com`; can be turned off in **Settings → General**) and, if you turn it on, to look up your public IP address (`api.ipify.org`).
 
 ## Known limitations
 

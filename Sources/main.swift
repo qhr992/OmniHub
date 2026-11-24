@@ -137,6 +137,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
         // `--remote-selftest <dir>`: drive the terminal's remote features
         // against a test server described by OMNIHUB_TEST_* (see test-remote.sh).
+        if args.contains("--update-selftest") {
+            UpdateSelfTest.run()
+            return
+        }
         if let index = args.firstIndex(of: "--remote-selftest"), index + 1 < args.count {
             RemoteSelfTest.run(into: URL(fileURLWithPath: args[index + 1], isDirectory: true))
             return
@@ -153,7 +157,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
         ClipboardStore.shared.start()
         MediaObserver.shared.start()
-        if !isToolRun { ShelfStore.shared.startPurging() }
+        if !isToolRun {
+            ShelfStore.shared.startPurging()
+            UpdateChecker.shared.start()
+        }
 
         if !ScreenCapture.isTrusted(), !isToolRun {
             ScreenCapture.requestAccess()
@@ -436,6 +443,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                                           isARepeat: false, keyCode: 53) {
                 NSApp.postEvent(key, atStart: false)
             }
+        case "check-updates":
+            DispatchQueue.main.async { UpdateChecker.shared.checkNow() }
         case "diagnose":
             try? diagnosticsText().write(to: Store.url("diagnostics.txt"), atomically: true, encoding: .utf8)
         case "snapshot":
@@ -843,6 +852,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             summary += " | png \(rep.pixelsWide)x\(rep.pixelsHigh) px"
         }
         out.append(summary)
+        out.append("-- update --")
+        out.append("update = \(UpdateChecker.shared.statusText)")
         out.append("-- hotkeys --")
         for (name, state) in HotKeyCenter.shared.report {
             out.append("  \(name): \(state)")
@@ -902,6 +913,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         addItem(menu, "Show / Hide Dock", key(.dock), #selector(toggleDock))
         addItem(menu, "Play / Pause", key(.playPause), #selector(togglePlayback))
         menu.addItem(.separator())
+        addItem(menu, "Check for Updates…", "", #selector(checkForUpdates))
         addItem(menu, "Settings…", "", #selector(showSettings))
         addItem(menu, "Quit OmniHub", "", #selector(quit))
     }
@@ -989,6 +1001,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         DispatchQueue.main.async { _ = finished }
     }
 
+    @objc private func checkForUpdates() { UpdateChecker.shared.checkNow() }
     @objc private func quit() { NSApp.terminate(nil) }
 }
 

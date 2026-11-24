@@ -120,6 +120,7 @@ final class SettingsPane: NSView, DockPage {
     private let loginCheckbox = FocusButton(checkboxWithTitle: L("Open at login"), target: nil, action: nil)
     private let languagePopup = FocusPopUp(frame: .zero, pullsDown: false)
     private let restartNote = NSTextField(labelWithString: L("Takes effect after OmniHub restarts."))
+    private let updateStatus = NSTextField(labelWithString: "")
     private lazy var restartButton = button("Restart Now", #selector(restartNow))
     private let screenStatus = NSTextField(labelWithString: "")
     private let accessStatus = NSTextField(labelWithString: "")
@@ -133,7 +134,7 @@ final class SettingsPane: NSView, DockPage {
         super.init(frame: .zero)
         buildContent()
         let center = NotificationCenter.default
-        for name in [Notification.Name.tasksChanged, .clipboardChanged, .settingsChanged] {
+        for name in [Notification.Name.tasksChanged, .clipboardChanged, .settingsChanged, .updateStatusChanged] {
             center.addObserver(self, selector: #selector(refreshStatus), name: name, object: nil)
         }
     }
@@ -267,11 +268,16 @@ final class SettingsPane: NSView, DockPage {
         languagePopup.target = self
         languagePopup.action = #selector(languagePicked)
         restartNote.font = .systemFont(ofSize: 11)
+        updateStatus.font = .systemFont(ofSize: 11)
+        updateStatus.textColor = .secondaryLabelColor
         restartNote.textColor = .secondaryLabelColor
         updateLanguageNote()
         addTab("General", [
             heading("Language"),
             row(languagePopup, restartNote, restartButton),
+            heading("Updates"),
+            row(PrefCheckbox("Check for updates automatically", key: UpdateChecker.autoKey, fallback: true),
+                button("Check Now", #selector(checkUpdates)), updateStatus),
             heading("Startup"),
             loginCheckbox,
             row(PrefCheckbox("Startup animation", key: "boot.enabled", fallback: true),
@@ -464,6 +470,7 @@ final class SettingsPane: NSView, DockPage {
         historyLabel.stringValue = L("%ld in history, %ld starred",
                                      ClipboardStore.shared.recentItems.count, ClipboardStore.shared.pinnedItems.count)
         dockVisible.state = Prefs.bool("dock.hidden") ? .off : .on
+        updateStatus.stringValue = UpdateChecker.shared.statusText
     }
 
     // MARK: Actions
@@ -511,6 +518,8 @@ final class SettingsPane: NSView, DockPage {
         }
         AppRelaunch.now()
     }
+
+    @objc private func checkUpdates() { UpdateChecker.shared.checkNow() }
 
     @objc private func previewBoot() { BootAnimation.playIfEnabled(force: true) }
     @objc private func openScreenSettings() { ScreenCapture.openPrivacySettings() }
