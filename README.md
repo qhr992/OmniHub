@@ -12,7 +12,9 @@ A menu bar suite for macOS. Screenshots, pinned images, clipboard history, Now P
 
 ## Features
 
-**Floating dock.** A small ball that stays where you drop it. Hover over it to open a card next to it; the card grows out of the ball and folds back when the pointer leaves. While media plays, the ball stretches into a pill with the spinning cover and a level meter. The dock gives access to every page: Home, Activity, Agenda, Terminal, Shelf, Clipboard and Settings. A page opened with its shortcut stays in front until you close it; once you switch to another page, the card folds away when you click elsewhere. In the card, Tab / ⇧Tab move between fields and settings; Space or Return works the focused control.
+**Floating dock.** A small ball that stays where you drop it. Hover over it to open a card next to it; the card grows out of the ball and folds back when the pointer leaves. While media plays, the ball stretches into a pill with the spinning cover and a level meter. The card keeps Home, Terminal, Shelf and Clipboard; its Settings icon opens Settings in the main window. A page opened with its shortcut stays in front until you close it; once you switch to another page, the card folds away when you click elsewhere. In the card, Tab / ⇧Tab move between fields and settings; Space or Return works the focused control.
+
+**Main window.** A left click on the menu bar icon (or a click on the Dock icon) opens an ordinary window with every page down the left: Home, Activity, Agenda, Terminal, Shelf, Clipboard and Settings; another left click closes it. A right click on the menu bar icon still shows its menu. A page is shown in one place at a time: opening it in the window takes it from the card, and it comes back when the card folds. Settings lists its categories down the left, with the chosen one on the right.
 
 **Screenshots.**
 - Capture with window detection, a magnifier and annotations with undo and redo: frames (rectangle or ellipse), arrows, pen, text, and a mosaic brush in three sizes to hide sensitive content. The chosen tool's options (shape, colour, brush size) open in a strip under the toolbar.

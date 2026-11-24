@@ -28,6 +28,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     static private(set) var shared: AppDelegate?
 
     private var statusItem: NSStatusItem!
+    /// The menu bar icon's menu, shown on a right (or Control-) click.
+    private var statusMenu: NSMenu!
     private var statusRunner: StatusRunner?
     private var lastDebug = ""
     private var controller: OverlayController?
@@ -111,6 +113,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             StatusSelfTest.run(pictures: folder)
             return
         }
+        if let index = args.firstIndex(of: "--main-selftest") {
+            let folder = index + 1 < args.count ? URL(fileURLWithPath: args[index + 1], isDirectory: true) : nil
+            MainSelfTest.run(pictures: folder)
+            return
+        }
         if args.contains("--tab-selftest") {
             TabSelfTest.run()
             return
@@ -168,6 +175,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             let center = NotificationCenter.default
             center.addObserver(self, selector: #selector(applyDockTile), name: .settingsChanged, object: nil)
             center.addObserver(self, selector: #selector(refreshDockTile), name: .statusIconChanged, object: nil)
+            center.addObserver(self, selector: #selector(applyActivationPolicy), name: .mainWindowChanged, object: nil)
             ShelfStore.shared.startPurging()
             UpdateChecker.shared.start()
         }
@@ -210,7 +218,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         let wanted = StatusIcon.inDock
         guard wanted != (dockTileView != nil) else { return }
         if wanted {
-            NSApp.setActivationPolicy(.regular)
+            applyActivationPolicy()
             let view = NSImageView(frame: NSRect(origin: .zero, size: NSApp.dockTile.size))
             view.imageScaling = .scaleProportionallyUpOrDown
             NSApp.dockTile.contentView = view
@@ -219,8 +227,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         } else {
             NSApp.dockTile.contentView = nil
             dockTileView = nil
-            NSApp.setActivationPolicy(.accessory)
+            applyActivationPolicy()
         }
+    }
+
+    /// A Dock icon while the main window is open or the status icon is
+    /// wanted there; a menu-bar app otherwise.
+    @objc private func applyActivationPolicy() {
+        let policy: NSApplication.ActivationPolicy = StatusIcon.inDock || MainWindow.isOpen ? .regular : .accessory
+        if NSApp.activationPolicy() != policy { NSApp.setActivationPolicy(policy) }
     }
 
     @objc private func refreshDockTile() {
@@ -229,11 +244,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         NSApp.dockTile.display()
     }
 
-    /// A click on the Dock tile opens Home on the card (or folds it); a
-    /// hidden ball comes back first. (Not `toggle()`: that hides the ball.)
+    /// A click on the Dock icon opens the main window.
     func applicationShouldHandleReopen(_ sender: NSApplication, hasVisibleWindows flag: Bool) -> Bool {
-        FloatingDockPanel.show()
-        FloatingDockPanel.open(.home)
+        if !MainWindow.isOpen || !(NSApp.keyWindow is MainWindow) { MainWindow.toggle() }
         return false
     }
 
@@ -472,6 +485,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         case "debug/pin-zoom/noop": _ = PinnedImageWindow.debugZoomFirst(1)
         case "open/clipfav": FloatingDockPanel.open(.clipboard, toggle: false); FloatingDockPanel.clipboard.showFavourites()
         case "open/dock": FloatingDockPanel.show()
+        case "open/main": MainWindow.toggle()
         case "toggle/dock": FloatingDockPanel.toggle()
         case "expand-dock": FloatingDockPanel.show(); FloatingDockPanel.expandForDemo()
         case "collapse-dock": FloatingDockPanel.closeCard()
@@ -897,6 +911,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             + "mem=\(SystemStats.bytes(Int64(stats.memoryUsed)))/\(SystemStats.bytes(Int64(stats.memoryTotal))) "
             + "disk=\(SystemStats.bytes(stats.diskUsed))/\(SystemStats.bytes(stats.diskTotal)) "
             + "ips=\(stats.localIPs.map { "\($0.name)=\($0.address)" })")
+        out.append(MainWindow.debugState)
         out.append("-- pages --")
         out.append(FloatingDockPanel.clipboard.debugState)
         out.append("pins = \(PinnedImageWindow.count) lastDebug = \(lastDebug)")
@@ -930,10 +945,19 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     // MARK: Menus
 
-    /// An accessory app shows no menu bar of its own, but text fields still
-    /// rely on the Edit menu's key equivalents for ⌘X / ⌘C / ⌘V / ⌘A / ⌘Z.
+    /// The menu bar shows while the main window is in front; text fields
+    /// rely on the Edit menu's key equivalents for ⌘X / ⌘C / ⌘V / ⌘A / ⌘Z
+    /// even when it does not.
     private func setupMainMenu() {
         let main = NSMenu()
+        let appItem = NSMenuItem()
+        let app = NSMenu(title: "OmniHub")
+        app.addItem(withTitle: L("Settings…"), action: #selector(showSettings), keyEquivalent: ",").target = self
+        app.addItem(.separator())
+        app.addItem(withTitle: L("Hide OmniHub"), action: #selector(NSApplication.hide(_:)), keyEquivalent: "h")
+        app.addItem(withTitle: L("Quit OmniHub"), action: #selector(quit), keyEquivalent: "q").target = self
+        appItem.submenu = app
+        main.addItem(appItem)
         let editItem = NSMenuItem()
         let edit = NSMenu(title: "Edit")
         edit.addItem(withTitle: L("Undo"), action: Selector(("undo:")), keyEquivalent: "z")
@@ -946,6 +970,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         edit.addItem(withTitle: L("Select All"), action: #selector(NSText.selectAll(_:)), keyEquivalent: "a")
         editItem.submenu = edit
         main.addItem(editItem)
+        let windowItem = NSMenuItem()
+        let windows = NSMenu(title: L("Window"))
+        windows.addItem(withTitle: L("Close"), action: #selector(NSWindow.performClose(_:)), keyEquivalent: "w")
+        windows.addItem(withTitle: L("Minimize"), action: #selector(NSWindow.performMiniaturize(_:)), keyEquivalent: "m")
+        windowItem.submenu = windows
+        main.addItem(windowItem)
+        NSApp.windowsMenu = windows
         NSApp.mainMenu = main
     }
 
@@ -958,7 +989,24 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         let menu = NSMenu()
         menu.delegate = self
         populate(menu)
-        statusItem.menu = menu
+        statusMenu = menu
+        // A left click opens the main window; a right click shows the menu.
+        statusItem.button?.target = self
+        statusItem.button?.action = #selector(statusItemClicked)
+        statusItem.button?.sendAction(on: [.leftMouseUp, .rightMouseUp])
+    }
+
+    @objc private func statusItemClicked() {
+        let event = NSApp.currentEvent
+        let wantsMenu = event?.type == .rightMouseUp || event?.modifierFlags.contains(.control) == true
+        guard wantsMenu else {
+            MainWindow.toggle()
+            return
+        }
+        // Attached only for this click, so the next left click is ours again.
+        statusItem.menu = statusMenu
+        statusItem.button?.performClick(nil)
+        statusItem.menu = nil
     }
 
     /// Rebuilt every time the menu opens so the shortcut labels follow the

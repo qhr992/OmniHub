@@ -45,7 +45,11 @@ enum StatusSelfTest {
 
     private static func keepAwake() {
         let awake = KeepAwake.shared
-        func held() -> Bool { shell("/usr/bin/pmset", ["-g", "assertions"]).contains("OmniHub: Keep Awake") }
+        // This process's assertion only: a running OmniHub may hold its own.
+        func held() -> Bool {
+            shell("/usr/bin/pmset", ["-g", "assertions"]).split(separator: "\n")
+                .contains { $0.contains("pid \(getpid())(") && $0.contains("OmniHub: Keep Awake") }
+        }
         awake.turnOn(seconds: 1.5)
         check("Keep Awake on: macOS lists the assertion", awake.isOn && held())
         wait(3) { !awake.isOn }

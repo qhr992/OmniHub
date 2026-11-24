@@ -117,10 +117,12 @@ final class PrefSlider: NSStackView {
     }
 }
 
-/// Settings page of the dock card: one tab per module.
+/// Settings, in the main window: the categories down the left, the chosen
+/// one's settings on the right.
 final class SettingsPane: NSView, DockPage {
     private let tabs = NSTabView()
-    private let tabPicker = FocusSegments()
+    private var categories: SidebarList?
+    static let categoryWidth: CGFloat = 168
     private let loginCheckbox = FocusButton(checkboxWithTitle: L("Open at login"), target: nil, action: nil)
     private let languagePopup = FocusPopUp(frame: .zero, pullsDown: false)
     private let restartNote = NSTextField(labelWithString: L("Takes effect after OmniHub restarts."))
@@ -150,7 +152,7 @@ final class SettingsPane: NSView, DockPage {
     @available(*, unavailable)
     required init?(coder: NSCoder) { fatalError() }
 
-    func preferredSize(horizontal: Bool) -> NSSize { NSSize(width: 640, height: 430) }
+    func preferredSize(horizontal: Bool) -> NSSize { NSSize(width: 820, height: 520) }
 
     var tabCount: Int { tabs.numberOfTabViewItems }
     /// The tabs' English names (they are the identifiers).
@@ -159,13 +161,30 @@ final class SettingsPane: NSView, DockPage {
     func select(tab: Int) {
         guard tab >= 0, tab < tabs.numberOfTabViewItems else { return }
         tabs.selectTabViewItem(at: tab)
-        tabPicker.selectedSegment = tab
+        categories?.select(tab)
         flashScroller()
     }
 
-    @objc private func tabPicked() {
-        tabs.selectTabViewItem(at: tabPicker.selectedSegment)
-        flashScroller()
+    var selectedTab: Int { tabs.selectedTabViewItem.map { tabs.indexOfTabViewItem($0) } ?? 0 }
+
+    /// The category list (test hook).
+    var debugCategories: SidebarList? { categories }
+
+    /// Icon and colour of each category, by its English name.
+    private static func badge(_ title: String) -> (String, NSColor) {
+        typealias Tint = SettingsSection.Tint
+        switch title {
+        case "General": return ("gearshape.fill", Tint.gray)
+        case "Shortcuts": return ("command", Tint.indigo)
+        case "Screenshot": return ("camera.viewfinder", Tint.blue)
+        case "Clipboard": return ("doc.on.clipboard.fill", Tint.teal)
+        case "Agenda": return ("calendar", Tint.red)
+        case "Dock": return ("circle.circle.fill", Tint.purple)
+        case "Appearance": return ("paintbrush.fill", Tint.pink)
+        case "Activity": return ("gauge.with.dots.needle.67percent", Tint.green)
+        case "Terminal": return ("terminal.fill", Tint.orange)
+        default: return ("square.fill", Tint.gray)
+        }
     }
 
     private var shownScroll: NSScrollView? { tabs.selectedTabViewItem?.view as? NSScrollView }
@@ -191,24 +210,11 @@ final class SettingsPane: NSView, DockPage {
         return (document.frame.height, visible)
     }
 
-    /// Eight tabs must fit the card's width: in a narrow card the strip
-    /// uses a smaller font and shares the width out evenly.
     override func layout() {
         super.layout()
-        let count = tabPicker.segmentCount
-        guard count > 0, bounds.width > 0 else { return }
-        let narrow = bounds.width < 640
-        let font = NSFont.systemFont(ofSize: narrow ? 11 : NSFont.systemFontSize)
-        if tabPicker.font != font { tabPicker.font = font }
-        // Each tab gets its label's width plus an equal share of what is left.
-        let texts = (0..<count).map { ((tabPicker.label(forSegment: $0) ?? "") as NSString).size(withAttributes: [.font: font]).width }
-        let spare = max(0, bounds.width - 4 - CGFloat(count) * 1.5 - texts.reduce(0, +)) / CGFloat(count)
-        for index in 0..<count {
-            let width = narrow ? floor(texts[index] + spare) : 0
-            if tabPicker.width(forSegment: index) != width { tabPicker.setWidth(width, forSegment: index) }
-        }
-        // Page margins (18 + 18) and a card's indent (43) and margin (14).
-        let wrap = max(200, min(560, bounds.width - 36 - 57))
+        guard bounds.width > 0 else { return }
+        // Category column (168 + 14), page margins (18 + 18), a card's indent (43) and margin (14).
+        let wrap = max(200, min(560, bounds.width - Self.categoryWidth - 14 - 36 - 57))
         for field in hintFields where field.preferredMaxLayoutWidth != wrap { field.preferredMaxLayoutWidth = wrap }
     }
 
@@ -449,8 +455,6 @@ final class SettingsPane: NSView, DockPage {
                 hint(L("Every page has this width (beside the dock, Home and Activity keep their narrow column). Default %ld = Home above or below the dock.",
                        Int(FloatingDockPanel.defaultCardWidth))),
                 row(label("Entry icons"),
-                    PrefCheckbox("Activity", key: "nav.show.activity", fallback: true),
-                    PrefCheckbox("Agenda", key: "nav.show.tasks", fallback: true),
                     PrefCheckbox("Terminal", key: "nav.show.terminal", fallback: true),
                     PrefCheckbox("Shelf", key: "nav.show.shelf", fallback: true),
                     PrefCheckbox("Clipboard", key: "nav.show.clipboard", fallback: true)),
@@ -496,34 +500,36 @@ final class SettingsPane: NSView, DockPage {
         (terminal as? SettingsSection)?.content.spacing = 7
         addTab("Terminal", [terminal])
 
-        // The tab strip is our own segmented control; the tab view only
-        // swaps the pages.
+        // The category list is our own; the tab view only swaps the pages.
         tabs.tabViewType = .noTabsNoBorder
         tabs.drawsBackground = false
         tabs.translatesAutoresizingMaskIntoConstraints = false
-        tabPicker.segmentCount = tabs.numberOfTabViewItems
-        for (index, item) in tabs.tabViewItems.enumerated() {
-            tabPicker.setLabel(item.label, forSegment: index)
+        let list = SidebarList(items: tabs.tabViewItems.map { item in
+            let title = "\(item.identifier ?? "")"
+            let (symbol, tint) = Self.badge(title)
+            return SidebarList.Item(title: title, symbol: symbol, tint: tint)
+        }, rowHeight: 32)
+        list.onPick = { [weak self] index in
+            self?.tabs.selectTabViewItem(at: index)
+            self?.flashScroller()
         }
-        tabPicker.trackingMode = .selectOne
-        tabPicker.selectedSegment = 0
-        tabPicker.target = self
-        tabPicker.action = #selector(tabPicked)
-        tabPicker.translatesAutoresizingMaskIntoConstraints = false
+        categories = list
         let panel = NSView()
         panel.wantsLayer = true
-        panel.layer?.backgroundColor = NSColor(white: 1, alpha: 0.05).cgColor
-        panel.layer?.cornerRadius = 10
+        panel.layer?.backgroundColor = NSColor(white: 1, alpha: 0.04).cgColor
+        panel.layer?.cornerRadius = 12
         panel.translatesAutoresizingMaskIntoConstraints = false
-        // The tab strip first: Tab goes through the subviews in this order.
-        addSubview(tabPicker)
+        // The categories first: Tab goes through the subviews in this order.
+        addSubview(list)
         addSubview(panel)
         panel.addSubview(tabs)
         NSLayoutConstraint.activate([
-            tabPicker.topAnchor.constraint(equalTo: topAnchor),
-            tabPicker.centerXAnchor.constraint(equalTo: centerXAnchor),
-            panel.topAnchor.constraint(equalTo: tabPicker.bottomAnchor, constant: 8),
-            panel.leadingAnchor.constraint(equalTo: leadingAnchor),
+            list.topAnchor.constraint(equalTo: topAnchor),
+            list.leadingAnchor.constraint(equalTo: leadingAnchor),
+            list.widthAnchor.constraint(equalToConstant: Self.categoryWidth),
+            list.bottomAnchor.constraint(lessThanOrEqualTo: bottomAnchor),
+            panel.topAnchor.constraint(equalTo: topAnchor),
+            panel.leadingAnchor.constraint(equalTo: list.trailingAnchor, constant: 14),
             panel.trailingAnchor.constraint(equalTo: trailingAnchor),
             panel.bottomAnchor.constraint(equalTo: bottomAnchor),
             tabs.topAnchor.constraint(equalTo: panel.topAnchor),

@@ -21,6 +21,9 @@ SOURCES=(
   Sources/HotKey.swift
   Sources/HotKeyCenter.swift
   Sources/SettingsPane.swift
+  Sources/SidebarList.swift
+  Sources/MainWindow.swift
+  Sources/MainSelfTest.swift
   Sources/ScreenCapture.swift
   Sources/WindowPicker.swift
   Sources/Annotate.swift

@@ -30,8 +30,8 @@ enum DockSelfTest {
               Page.allCases == [.home, .activity, .tasks, .terminal, .shelf, .clipboard, .settings])
         _ = FloatingDockPanel.debugCardSize(page: .home, x: 0.5, y: 0)
         var nav = FloatingDockPanel.debugNav
-        check("Clipboard and Settings sit at the far end of the entry row",
-              nav.leading == ["Home", "Activity", "Agenda", "Terminal", "Shelf"] && nav.trailing == ["Clipboard", "Settings"],
+        check("Clipboard and Settings sit at the far end of the entry row (Activity and Agenda are in the main window)",
+              nav.leading == ["Home", "Terminal", "Shelf"] && nav.trailing == ["Clipboard", "Settings"],
               "\(nav)")
         Prefs.set("nav.show.terminal", false)
         _ = FloatingDockPanel.debugCardSize(page: .home, x: 0.5, y: 0)

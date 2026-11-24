@@ -66,6 +66,7 @@ enum TabSelfTest {
         case is NSSlider: return "slider"
         case is NSSegmentedControl: return "segments"
         case is NSTableView: return "list"
+        case let row as SidebarRow: return "category(\(row.itemTitle))"
         case let button as NSButton:
             return button.image != nil && button.imagePosition == .imageOnly || button.title.isEmpty
                 ? "button(\(button.toolTip ?? "?"))" : "button(\(button.title))"
@@ -151,7 +152,13 @@ enum TabSelfTest {
         }
         for (index, title) in pane.tabTitles.enumerated() {
             pane.select(tab: index)
-            walk("Settings › \(title)", scope: pane, window: window)
+            pane.layoutSubtreeIfNeeded()
+            // The categories come first (their own column), then the page top to bottom.
+            let stops = TabOrder.stops(in: pane)
+            let leading = stops.prefix { $0 is SidebarRow }.count
+            check("Settings › \(title): Tab starts with the \(pane.tabCount) categories", leading == pane.tabCount,
+                  "\(stops.prefix(12).map(name))")
+            walk("Settings › \(title)", scope: pane, window: window, layoutOrder: stops.filter { !($0 is SidebarRow) })
         }
         // Space works a focused check box (pressed twice: the setting is left as it was).
         pane.select(tab: 2)
@@ -167,21 +174,25 @@ enum TabSelfTest {
         } else {
             check("Settings: Space toggles the focused check box", false, "no Magnifier box")
         }
-        // ← / → on the focused tab strip switch the settings tab.
-        if let strip = TabOrder.stops(in: pane).first as? NSSegmentedControl {
-            window.makeFirstResponder(strip)
-            key(window, code: 124, characters: "\u{F703}")
-            let right = strip.selectedSegment
-            key(window, code: 123, characters: "\u{F702}")
-            check("Settings: ← / → on the tab strip switch tabs", right == 3 && strip.selectedSegment == 2,
-                  "→ \(right), ← \(strip.selectedSegment)")
+        // ↓ / ↑ on a focused category move to the next / previous one.
+        let rows = TabOrder.stops(in: pane).compactMap { $0 as? SidebarRow }
+        if rows.count > 3 {
+            window.makeFirstResponder(rows[2])
+            key(window, code: 125, characters: "\u{F701}")
+            let down = pane.selectedTab
+            let downFocus = window.focusedControl === rows[3]
+            key(window, code: 126, characters: "\u{F700}")
+            check("Settings: ↓ / ↑ on the categories switch them (and move the focus)",
+                  down == 3 && downFocus && pane.selectedTab == 2, "↓ \(down), ↑ \(pane.selectedTab)")
+        } else {
+            check("Settings: the categories are Tab stops", false)
         }
 
         // Nothing focused yet: Tab starts at the top of the page.
         window.makeFirstResponder(nil)
         press(window)
-        check("Settings: with nothing focused, Tab starts at the tab strip",
-              window.focusedControl is NSSegmentedControl, "at \(name(window.focusedControl))")
+        check("Settings: with nothing focused, Tab starts at the categories",
+              window.focusedControl is SidebarRow, "at \(name(window.focusedControl))")
     }
 
     private static func agenda() {

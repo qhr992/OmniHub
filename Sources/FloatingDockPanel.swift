@@ -33,8 +33,15 @@ final class FloatingDockPanel: NSPanel, EscDismissable {
         /// Home and Settings cannot be hidden from the entry row.
         var canHide: Bool { self != .home && self != .settings }
 
+        /// The pages the card keeps; the rest open in the main window, and
+        /// the card's Settings icon leads there too.
+        var inCard: Bool { [.home, .terminal, .shelf, .clipboard, .settings].contains(self) }
+
+        /// Shown in the card itself (Settings only as an icon).
+        var opensInCard: Bool { inCard && self != .settings }
+
         static func isShown(_ page: Page) -> Bool {
-            !page.canHide || Prefs.bool("nav.show.\(page.rawValue)", true)
+            page.inCard && (!page.canHide || Prefs.bool("nav.show.\(page.rawValue)", true))
         }
 
         var title: String {
@@ -86,7 +93,7 @@ final class FloatingDockPanel: NSPanel, EscDismissable {
     private var navButtons: [Page: NSButton] = [:]
     private let pageTitle = NSTextField(labelWithString: "")
     private let holidayLabel = NSTextField(labelWithString: "")
-    private let pageHost = FlippedView()
+    private let pageHost = PageHostView()
     private var pageWidth: NSLayoutConstraint?
     private var pageHeight: NSLayoutConstraint?
     private weak var shownPage: NSView?
@@ -190,6 +197,10 @@ final class FloatingDockPanel: NSPanel, EscDismissable {
     /// Opens a page of the card and keeps it open. Calling it again for the
     /// page that is already open closes the card (hotkeys toggle).
     static func open(_ target: Page, toggle: Bool = true, settingsTab: Int? = nil, pinned: Bool = true) {
+        guard target.opensInCard else {
+            MainWindow.open(target, toggle: toggle, settingsTab: settingsTab)
+            return
+        }
         let panel = instance()
         if toggle, panel.expanded, panel.heldOpen, panel.page == target, panel.isVisible {
             panel.closeCard()
@@ -234,6 +245,32 @@ final class FloatingDockPanel: NSPanel, EscDismissable {
     }
 
     static var debugActivity: [String] { shared?.activity.debugRows ?? [] }
+
+    // MARK: Sharing pages with the main window
+
+    /// A page's view (one per page, shown in the card or the main window).
+    static func pageView(for target: Page) -> NSView { instance().pageView(target) }
+
+    static var activityView: ActivityView { instance().activity }
+
+    /// The main window takes `view`: the card lets go of it (and folds if
+    /// it was showing it) and drops the size it had pinned on it.
+    static func release(_ view: NSView) {
+        guard let panel = shared else { return }
+        if panel.shownPage === view { panel.closeCard() }
+        if let width = panel.pageWidth, width.firstItem as? NSView === view {
+            panel.pageWidth?.isActive = false
+            panel.pageHeight?.isActive = false
+            panel.pageWidth = nil
+            panel.pageHeight = nil
+        }
+    }
+
+    /// Whether the card shows `view` right now.
+    static func isShowing(_ view: NSView) -> Bool { shared?.shownPage === view && shared?.expanded == true }
+
+    /// Lays Home out side by side, `width` wide (the main window's Home).
+    static func layoutHome(width: CGFloat) { instance().layoutHome(horizontal: true, width: width) }
 
     // Test hooks for the dock self-test.
     static func debugCardSize(page: Page, x: Double, y: Double) -> NSSize {
@@ -531,7 +568,7 @@ final class FloatingDockPanel: NSPanel, EscDismissable {
         // ---- card chrome: entry icons, title, holiday countdown, close
         nav.spacing = 4
         navTrailing.spacing = 4
-        for target in Page.allCases {
+        for target in Page.allCases where target.inCard {
             let button = NSButton()
             let config = NSImage.SymbolConfiguration(pointSize: 13, weight: .medium)
             button.image = (NSImage(systemSymbolName: target.symbol, accessibilityDescription: target.title)
@@ -1142,25 +1179,7 @@ final class FloatingDockPanel: NSPanel, EscDismissable {
 
         switch page {
         case .home:
-            card.orientation = horizontal ? .horizontal : .vertical
-            card.alignment = horizontal ? .top : .leading
-            divider.isHidden = player.isHidden
-            dividerWidth.isActive = false
-            dividerHeight.isActive = false
-            if horizontal {
-                // As wide as every other page: the to-do column takes the rest.
-                sideWidth.constant = player.isHidden ? Self.cardContentWidth
-                    : Self.cardContentWidth - Self.columnWidth - 2 * card.spacing - 1
-                dividerWidth.constant = 1
-                dividerHeight.constant = max(60, max(player.fittingSize.height, side.fittingSize.height))
-            } else {
-                sideWidth.constant = Self.columnWidth
-                dividerWidth.constant = Self.columnWidth
-                dividerHeight.constant = 1
-            }
-            dividerWidth.isActive = true
-            dividerHeight.isActive = true
-            card.layoutSubtreeIfNeeded()
+            layoutHome(horizontal: horizontal, width: Self.cardContentWidth)
             return card.fittingSize
         case .activity:
             activity.setWidth(horizontal ? Self.cardContentWidth : Self.columnWidth + 20)
@@ -1179,6 +1198,28 @@ final class FloatingDockPanel: NSPanel, EscDismissable {
             pageHeight?.constant = size.height
             return size
         }
+    }
+
+    /// Home: player and to-dos side by side, `width` wide (the to-do column
+    /// takes what the player leaves), or stacked in the narrow column.
+    private func layoutHome(horizontal: Bool, width: CGFloat) {
+        card.orientation = horizontal ? .horizontal : .vertical
+        card.alignment = horizontal ? .top : .leading
+        divider.isHidden = player.isHidden
+        dividerWidth.isActive = false
+        dividerHeight.isActive = false
+        if horizontal {
+            sideWidth.constant = player.isHidden ? width : width - Self.columnWidth - 2 * card.spacing - 1
+            dividerWidth.constant = 1
+            dividerHeight.constant = max(60, max(player.fittingSize.height, side.fittingSize.height))
+        } else {
+            sideWidth.constant = Self.columnWidth
+            dividerWidth.constant = Self.columnWidth
+            dividerHeight.constant = 1
+        }
+        dividerWidth.isActive = true
+        dividerHeight.isActive = true
+        card.layoutSubtreeIfNeeded()
     }
 
     /// Lays the card's chrome and page out for `content` and returns the
@@ -2065,6 +2106,11 @@ final class FloatingDockPanel: NSPanel, EscDismissable {
     @objc private func navTapped(_ sender: NSButton) {
         guard sender.tag < Page.allCases.count else { return }
         let target = Page.allCases[sender.tag]
+        guard target.opensInCard else {
+            closeCard()
+            MainWindow.open(target, toggle: false)
+            return
+        }
         // A page reached by clicking is not pinned: it goes away when the
         // card loses the keyboard. A hotkey pins only the page it opened;
         // clicking over to another page ends that.
@@ -2568,5 +2614,20 @@ final class SlimScroller: NSScroller {
         let rect = rect(for: .knob).insetBy(dx: 2, dy: 2)
         NSColor(white: 1, alpha: 0.35).setFill()
         NSBezierPath(roundedRect: rect, xRadius: rect.width / 2, yRadius: rect.width / 2).fill()
+    }
+}
+
+extension Notification.Name {
+    /// The card let go of a page's view (the main window may take it back).
+    static let dockPageReleased = Notification.Name("omnihub.dockPageReleased")
+}
+
+/// The card's page area: tells the main window when a page leaves it.
+final class PageHostView: NSView {
+    override var isFlipped: Bool { true }
+
+    override func willRemoveSubview(_ subview: NSView) {
+        super.willRemoveSubview(subview)
+        DispatchQueue.main.async { NotificationCenter.default.post(name: .dockPageReleased, object: subview) }
     }
 }
