@@ -83,8 +83,12 @@ final class PrefSlider: NSStackView {
     private let slider: FocusSlider
     private let valueLabel = NSTextField(labelWithString: "")
 
-    init(key: String, fallback: Int, range: ClosedRange<Int>, width: CGFloat = 260, continuous: Bool = true) {
+    private let suffix: String
+
+    init(key: String, fallback: Int, range: ClosedRange<Int>, width: CGFloat = 260, continuous: Bool = true,
+         suffix: String = "") {
         self.key = key
+        self.suffix = suffix
         slider = FocusSlider(value: Double(Prefs.int(key, fallback)), minValue: Double(range.lowerBound),
                           maxValue: Double(range.upperBound), target: nil, action: nil)
         super.init(frame: .zero)
@@ -97,7 +101,7 @@ final class PrefSlider: NSStackView {
         slider.widthAnchor.constraint(equalToConstant: width).isActive = true
         valueLabel.font = .monospacedDigitSystemFont(ofSize: 11, weight: .regular)
         valueLabel.textColor = .secondaryLabelColor
-        valueLabel.stringValue = "\(Int(slider.doubleValue))"
+        valueLabel.stringValue = "\(Int(slider.doubleValue))\(suffix)"
         addArrangedSubview(slider)
         addArrangedSubview(valueLabel)
     }
@@ -107,7 +111,7 @@ final class PrefSlider: NSStackView {
 
     @objc private func changed() {
         let value = Int(slider.doubleValue.rounded())
-        valueLabel.stringValue = "\(value)"
+        valueLabel.stringValue = "\(value)\(suffix)"
         Prefs.set(key, value)
         NotificationCenter.default.post(name: .settingsChanged, object: nil)
     }
@@ -131,6 +135,8 @@ final class SettingsPane: NSView, DockPage {
     private let historyLabel = NSTextField(labelWithString: "")
     private let dockVisible = FocusButton(checkboxWithTitle: L("Show dock"), target: nil, action: nil)
     private var statusTimer: Timer?
+    /// Wrapping notes: their width follows the card's.
+    private var hintFields: [NSTextField] = []
 
     init() {
         super.init(frame: .zero)
@@ -145,6 +151,10 @@ final class SettingsPane: NSView, DockPage {
     required init?(coder: NSCoder) { fatalError() }
 
     func preferredSize(horizontal: Bool) -> NSSize { NSSize(width: 640, height: 430) }
+
+    var tabCount: Int { tabs.numberOfTabViewItems }
+    /// The tabs' English names (they are the identifiers).
+    var tabTitles: [String] { tabs.tabViewItems.map { "\($0.identifier ?? "")" } }
 
     func select(tab: Int) {
         guard tab >= 0, tab < tabs.numberOfTabViewItems else { return }
@@ -197,6 +207,9 @@ final class SettingsPane: NSView, DockPage {
             let width = narrow ? floor(texts[index] + spare) : 0
             if tabPicker.width(forSegment: index) != width { tabPicker.setWidth(width, forSegment: index) }
         }
+        // Page margins (18 + 18) and a card's indent (43) and margin (14).
+        let wrap = max(200, min(560, bounds.width - 36 - 57))
+        for field in hintFields where field.preferredMaxLayoutWidth != wrap { field.preferredMaxLayoutWidth = wrap }
     }
 
     /// Test hook: start recording a shortcut exactly as a click would.
@@ -234,7 +247,7 @@ final class SettingsPane: NSView, DockPage {
         let stack = NSStackView(views: views)
         stack.orientation = .vertical
         stack.alignment = .leading
-        stack.spacing = 10
+        stack.spacing = 12
         stack.translatesAutoresizingMaskIntoConstraints = false
         let document = FlippedView()
         document.translatesAutoresizingMaskIntoConstraints = false
@@ -255,13 +268,16 @@ final class SettingsPane: NSView, DockPage {
             document.widthAnchor.constraint(equalTo: clip.widthAnchor),
             stack.topAnchor.constraint(equalTo: document.topAnchor, constant: 14),
             stack.leadingAnchor.constraint(equalTo: document.leadingAnchor, constant: 18),
-            stack.trailingAnchor.constraint(lessThanOrEqualTo: document.trailingAnchor, constant: -18),
+            stack.trailingAnchor.constraint(equalTo: document.trailingAnchor, constant: -18),
             stack.bottomAnchor.constraint(equalTo: document.bottomAnchor, constant: -14)
         ])
+        for view in views where view is SettingsSection {
+            view.widthAnchor.constraint(equalTo: stack.widthAnchor).isActive = true
+        }
         return scroll
     }
 
-    private func row(_ views: NSView...) -> NSStackView {
+    func row(_ views: NSView...) -> NSStackView {
         let stack = NSStackView(views: views)
         stack.orientation = .horizontal
         stack.alignment = .centerY
@@ -269,31 +285,39 @@ final class SettingsPane: NSView, DockPage {
         return stack
     }
 
-    private func label(_ text: String) -> NSTextField {
+    func label(_ text: String) -> NSTextField {
         let field = NSTextField(labelWithString: L(text))
+        // A word some languages do without: no gap where it would be.
+        field.isHidden = field.stringValue.isEmpty
         field.font = .systemFont(ofSize: 13)
         return field
     }
 
-    private func hint(_ text: String) -> NSTextField {
+    func hint(_ text: String) -> NSTextField {
         let field = NSTextField(wrappingLabelWithString: L(text))
         field.font = .systemFont(ofSize: 11)
         field.textColor = .secondaryLabelColor
         field.preferredMaxLayoutWidth = 520
+        hintFields.append(field)
         return field
     }
 
-    private func heading(_ text: String) -> NSTextField {
+    func heading(_ text: String) -> NSTextField {
         let field = NSTextField(labelWithString: L(text))
         field.font = .systemFont(ofSize: 12, weight: .semibold)
         field.textColor = .secondaryLabelColor
         return field
     }
 
-    private func button(_ title: String, _ action: Selector) -> NSButton {
+    func button(_ title: String, _ action: Selector) -> NSButton {
         let button = FocusButton(title: L(title), target: self, action: action)
         button.bezelStyle = .rounded
         return button
+    }
+
+    /// A coloured group card.
+    func section(_ title: String, _ symbol: String, _ tint: NSColor, _ views: [NSView]) -> NSView {
+        SettingsSection(title: title, symbol: symbol, tint: tint, views: views)
     }
 
     private func addTab(_ title: String, _ views: [NSView]) {
@@ -318,27 +342,27 @@ final class SettingsPane: NSView, DockPage {
         updateStatus.textColor = .secondaryLabelColor
         restartNote.textColor = .secondaryLabelColor
         updateLanguageNote()
+        typealias Tint = SettingsSection.Tint
         addTab("General", [
-            heading("Language"),
-            row(languagePopup, restartNote, restartButton),
-            heading("Updates"),
-            row(PrefCheckbox("Check for updates automatically", key: UpdateChecker.autoKey, fallback: true),
-                updateStatus, updateButton),
-            heading("Startup"),
-            loginCheckbox,
-            row(PrefCheckbox("Startup animation", key: "boot.enabled", fallback: true),
-                PrefCheckbox("Sound", key: "boot.sound", fallback: true),
-                button("Preview", #selector(previewBoot))),
-            heading("Menu Bar Icon"),
-            row(PrefCheckbox("Runner", key: "status.animated", fallback: true),
-                label("Follows"), PrefChoice(key: "status.metric", fallback: 0, options: [(0, "Memory"), (1, "CPU")])),
-            heading("Permissions"),
-            row(screenStatus, button("Screen Recording Settings…", #selector(openScreenSettings))),
-            hint("Needed for screenshots and pins. Restart OmniHub after granting."),
-            row(accessStatus, button("Grant Accessibility…", #selector(requestAccessibility))),
-            hint("Optional: lets players that take no commands from other apps (e.g. NetEase) switch play mode and like through their menus."),
-            row(calendarStatus, button("Calendar Settings…", #selector(openCalendarSettings))),
-            hint("Optional: shows your events in Agenda.")
+            section("Language", "globe", Tint.blue, [row(languagePopup, restartNote, restartButton)]),
+            section("Updates", "arrow.down.circle", Tint.green, [
+                row(PrefCheckbox("Check for updates automatically", key: UpdateChecker.autoKey, fallback: true),
+                    updateStatus, updateButton)
+            ]),
+            section("Startup", "power", Tint.orange, [
+                loginCheckbox,
+                row(PrefCheckbox("Startup animation", key: "boot.enabled", fallback: true),
+                    PrefCheckbox("Sound", key: "boot.sound", fallback: true),
+                    button("Preview", #selector(previewBoot)))
+            ]),
+            section("Permissions", "lock.shield", Tint.red, [
+                row(screenStatus, button("Screen Recording Settings…", #selector(openScreenSettings))),
+                hint("Needed for screenshots and pins. Restart OmniHub after granting."),
+                row(accessStatus, button("Grant Accessibility…", #selector(requestAccessibility))),
+                hint("Optional: lets players that take no commands from other apps (e.g. NetEase) switch play mode and like through their menus."),
+                row(calendarStatus, button("Calendar Settings…", #selector(openCalendarSettings))),
+                hint("Optional: shows your events in Agenda.")
+            ])
         ])
 
         // Shortcuts
@@ -356,87 +380,106 @@ final class SettingsPane: NSView, DockPage {
             hotkeyRows.append(line)
         }
         hotkeyRows.append(button("Reset All", #selector(resetHotKeys)))
-        let hotkeys = page(hotkeyRows)
-        (hotkeys.subviews.first as? NSStackView)?.spacing = 6
-        let hotkeyItem = NSTabViewItem(identifier: "Shortcuts")
-        hotkeyItem.label = L("Shortcuts")
-        hotkeyItem.view = hotkeys
-        tabs.addTabViewItem(hotkeyItem)
+        let keys = section("Global Shortcuts", "keyboard", Tint.indigo, hotkeyRows)
+        (keys as? SettingsSection)?.content.spacing = 6
+        addTab("Shortcuts", [keys])
 
         // Screenshot
         addTab("Screenshot", [
-            PrefCheckbox("Detect windows on hover (click selects the window)", key: "snip.detectWindows", fallback: true),
-            PrefCheckbox("Magnifier", key: "snip.magnifier", fallback: true),
-            PrefCheckbox("Show “Copied” when done", key: "snip.toast", fallback: true),
-            heading("Scrolling Screenshot"),
-            hint("Start from the screenshot toolbar, or give it a shortcut, then scroll down yourself. It stops a few seconds after you stop, or on Esc / Done."),
-            heading("Pins"),
-            hint("Zoom with scroll, pinch, or the − ＋ buttons shown on hover; × closes. Text in a pin can be selected and copied.")
+            section("Screenshot", "camera.viewfinder", Tint.teal, [
+                PrefCheckbox("Detect windows on hover (click selects the window)", key: "snip.detectWindows", fallback: true),
+                PrefCheckbox("Magnifier", key: "snip.magnifier", fallback: true),
+                PrefCheckbox("Show “Copied” when done", key: "snip.toast", fallback: true)
+            ]),
+            section("Scrolling Screenshot", "arrow.up.and.down.text.horizontal", Tint.blue, [
+                hint("Start from the screenshot toolbar, or give it a shortcut, then scroll down yourself. It stops a few seconds after you stop, or on Esc / Done.")
+            ]),
+            section("Pins", "pin.fill", Tint.pink, [
+                hint("Zoom with scroll, pinch, or the − ＋ buttons shown on hover; × closes. Text in a pin can be selected and copied.")
+            ])
         ])
 
         // Clipboard
         addTab("Clipboard", [
-            row(label("Keep history"), PrefPopup(key: "clipboard.maxRecent", fallback: 120,
-                                               values: [50, 120, 300, 500], suffix: "items")),
-            PrefCheckbox("Record images", key: "clipboard.images", fallback: true),
-            row(historyLabel, button("Clear History", #selector(clearHistory))),
-            hint("Starred items are kept. Double-click an item to copy it and close the card."),
-            heading("Shelf"),
-            row(label("Keep files for"), PrefPopup(key: "shelf.days", fallback: 7,
-                                                 values: ShelfStore.retentionChoices, suffix: "days")),
-            PrefCheckbox("Keep Shelf in front after a drop", key: FloatingDockPanel.shelfKeepOpenKey, fallback: true),
-            hint("Drop files on the dock ball to keep a copy on the Shelf. Older ones are deleted automatically. Off: the Shelf folds away when the pointer leaves, like a hover-opened card.")
+            section("Clipboard", "doc.on.clipboard", Tint.yellow, [
+                row(label("Keep history"), PrefPopup(key: "clipboard.maxRecent", fallback: 120,
+                                                   values: [50, 120, 300, 500], suffix: "items")),
+                PrefCheckbox("Record images", key: "clipboard.images", fallback: true),
+                row(historyLabel, button("Clear History", #selector(clearHistory))),
+                hint("Starred items are kept. Double-click an item to copy it and close the card.")
+            ]),
+            section("Shelf", "tray.full", Tint.orange, [
+                row(label("Keep files for"), PrefPopup(key: "shelf.days", fallback: 7,
+                                                     values: ShelfStore.retentionChoices, suffix: "days")),
+                PrefCheckbox("Keep Shelf in front after a drop", key: FloatingDockPanel.shelfKeepOpenKey, fallback: true),
+                hint("Drop files on the dock ball to keep a copy on the Shelf. Older ones are deleted automatically. Off: the Shelf folds away when the pointer leaves, like a hover-opened card.")
+            ])
         ])
 
         // Agenda
         addTab("Agenda", [
-            row(label("Show on Home"), PrefPopup(key: "dock.taskLimit", fallback: 5,
-                                              values: [3, 5, 8, 10], suffix: "items")),
-            PrefCheckbox("New to-dos have a date by default", key: "task.defaultDate", fallback: true),
-            row(completedLabel, button("Clear Done", #selector(clearCompleted))),
-            hint("The month view reads your Mac Calendar (macOS asks once). Pick a day to see its events and to-dos.")
+            section("Agenda", "checklist", Tint.red, [
+                row(label("Show on Home"), PrefPopup(key: "dock.taskLimit", fallback: 5,
+                                                  values: [3, 5, 8, 10], suffix: "items")),
+                PrefCheckbox("New to-dos have a date by default", key: "task.defaultDate", fallback: true),
+                row(completedLabel, button("Clear Done", #selector(clearCompleted))),
+                hint("The month view reads your Mac Calendar (macOS asks once). Pick a day to see its events and to-dos.")
+            ])
         ])
 
         // dock
         dockVisible.target = self
         dockVisible.action = #selector(toggleDockVisible)
         addTab("Dock", [
-            dockVisible,
-            heading("While playing"),
-            row(label("Dock shows"), PrefChoice(key: "dock.mediaStyle", fallback: 0,
-                                             options: [(0, "Spinning cover + bars"), (1, "Lyrics"), (2, "Static icon")])),
-            row(label("Player length"), PrefSlider(key: "dock.pillWidth", fallback: 300, range: 84...680)),
-            hint("Far left = cover and bars only. Lyrics come from NetEase / LRCLIB (title shown if none); long text scrolls."),
-            PrefCheckbox("Now Playing on Home", key: "dock.showMedia", fallback: true),
-            PrefCheckbox("Holiday countdown on Home", key: "dock.showHoliday", fallback: true),
-            heading("Card"),
-            row(label("Card width"), PrefSlider(key: "dock.cardWidth", fallback: FloatingDockPanel.defaultCardWidth,
-                                                range: 480...1100, width: 220, continuous: false)),
-            hint(L("Every page has this width (beside the dock, Home and Activity keep their narrow column). Default %ld = Home above or below the dock.",
-                   Int(FloatingDockPanel.defaultCardWidth))),
-            row(label("Entry icons"),
-                PrefCheckbox("Activity", key: "nav.show.activity", fallback: true),
-                PrefCheckbox("Agenda", key: "nav.show.tasks", fallback: true),
-                PrefCheckbox("Terminal", key: "nav.show.terminal", fallback: true),
-                PrefCheckbox("Shelf", key: "nav.show.shelf", fallback: true),
-                PrefCheckbox("Clipboard", key: "nav.show.clipboard", fallback: true)),
-            hint("Home and Settings are always shown. Hidden pages still open with their shortcuts."),
-            heading("Icon"),
-            row(button("Choose Image…", #selector(chooseIcon)), button("Default Icon", #selector(resetIcon))),
-            hint("Touch the dock and the card opens beside it; the dock stays visible and can be dragged anywhere.")
+            section("Dock", "circle.circle", Tint.blue, [
+                dockVisible,
+                hint("Touch the dock and the card opens beside it; the dock stays visible and can be dragged anywhere.")
+            ]),
+            section("While playing", "music.note", Tint.pink, [
+                row(label("Dock shows"), PrefChoice(key: "dock.mediaStyle", fallback: 0,
+                                                 options: [(0, "Spinning cover + bars"), (1, "Lyrics"), (2, "Static icon")])),
+                row(label("Player length"), PrefSlider(key: "dock.pillWidth", fallback: 300, range: 84...680)),
+                hint("Far left = cover and bars only. Lyrics come from NetEase / LRCLIB (title shown if none); long text scrolls."),
+                PrefCheckbox("Now Playing on Home", key: "dock.showMedia", fallback: true),
+                PrefCheckbox("Holiday countdown on Home", key: "dock.showHoliday", fallback: true)
+            ]),
+            section("Card", "rectangle.on.rectangle", Tint.teal, [
+                row(label("Card width"), PrefSlider(key: "dock.cardWidth", fallback: FloatingDockPanel.defaultCardWidth,
+                                                    range: 480...1100, width: 220, continuous: false)),
+                hint(L("Every page has this width (beside the dock, Home and Activity keep their narrow column). Default %ld = Home above or below the dock.",
+                       Int(FloatingDockPanel.defaultCardWidth))),
+                row(label("Entry icons"),
+                    PrefCheckbox("Activity", key: "nav.show.activity", fallback: true),
+                    PrefCheckbox("Agenda", key: "nav.show.tasks", fallback: true),
+                    PrefCheckbox("Terminal", key: "nav.show.terminal", fallback: true),
+                    PrefCheckbox("Shelf", key: "nav.show.shelf", fallback: true),
+                    PrefCheckbox("Clipboard", key: "nav.show.clipboard", fallback: true)),
+                hint("Home and Settings are always shown. Hidden pages still open with their shortcuts.")
+            ])
         ])
+
+        // Appearance
+        addTab("Appearance", appearanceSections())
 
         // Activity
         addTab("Activity", [
-            heading("Activity page shows"),
-            PrefCheckbox("CPU", key: "activity.cpu", fallback: true),
-            PrefCheckbox("GPU", key: "activity.gpu", fallback: true),
-            PrefCheckbox("Memory", key: "activity.memory", fallback: true),
-            PrefCheckbox("Disk (usage and I/O)", key: "activity.disk", fallback: true),
-            PrefCheckbox("Local IP addresses", key: "activity.ip", fallback: true),
-            PrefCheckbox("Public IP (asks api.ipify.org)", key: "activity.publicIP", fallback: false),
-            row(label("Refresh every"), PrefChoice(key: "activity.interval", fallback: 2,
-                                           options: [(1, "1 s"), (2, "2 s"), (5, "5 s")]))
+            section("Activity page shows", "gauge.with.dots.needle.67percent", Tint.green, [
+                row(PrefCheckbox("CPU", key: "activity.cpu", fallback: true),
+                    PrefCheckbox("GPU", key: "activity.gpu", fallback: true),
+                    PrefCheckbox("Memory", key: "activity.memory", fallback: true),
+                    PrefCheckbox("Disk (usage and I/O)", key: "activity.disk", fallback: true)),
+                row(PrefCheckbox("Network speed", key: "activity.network", fallback: true),
+                    PrefCheckbox("Battery", key: "activity.battery", fallback: true),
+                    PrefCheckbox("Keep Awake", key: "activity.keepAwake", fallback: true),
+                    PrefCheckbox("Top apps", key: "activity.topApps", fallback: true)),
+                row(PrefCheckbox("Local IP addresses", key: "activity.ip", fallback: true),
+                    PrefCheckbox("Public IP (asks api.ipify.org)", key: "activity.publicIP", fallback: false)),
+                row(label("Refresh every"), PrefChoice(key: "activity.interval", fallback: 2,
+                                               options: [(1, "1 s"), (2, "2 s"), (5, "5 s")]))
+            ]),
+            section("Keep Awake", "cup.and.saucer.fill", Tint.orange, [
+                hint("Keeps the display from sleeping while you are away — for 30 minutes, 1 or 2 hours, or until turned off. Set it on the Activity page or from the menu bar icon; it ends when OmniHub quits.")
+            ])
         ])
 
         // Terminal
@@ -452,12 +495,9 @@ final class SettingsPane: NSView, DockPage {
         terminalRows.append(row(button("Open Config File", #selector(openKeymapFile)),
                                 button("Reset", #selector(resetKeymap))))
         terminalRows.append(hint("Connections, Vault and Proxies: the gear at the top right of the Terminal page."))
-        let terminal = page(terminalRows)
-        (terminal.subviews.first as? NSStackView)?.spacing = 7
-        let terminalItem = NSTabViewItem(identifier: "Terminal")
-        terminalItem.label = L("Terminal")
-        terminalItem.view = terminal
-        tabs.addTabViewItem(terminalItem)
+        let terminal = section("Terminal Shortcuts", "terminal", Tint.gray, terminalRows)
+        (terminal as? SettingsSection)?.content.spacing = 7
+        addTab("Terminal", [terminal])
 
         // The tab strip is our own segmented control; the tab view only
         // swaps the pages.
@@ -599,8 +639,8 @@ final class SettingsPane: NSView, DockPage {
         Prefs.set("dock.hidden", dockVisible.state == .off)
         refreshStatus()
     }
-    @objc private func chooseIcon() { FloatingDockPanel.chooseIcon() }
-    @objc private func resetIcon() { FloatingDockPanel.resetIcon() }
+    @objc func chooseIcon() { FloatingDockPanel.chooseIcon() }
+    @objc func resetIcon() { FloatingDockPanel.resetIcon() }
     @objc private func openKeymapFile() {
         TerminalKeymap.shared.reloadIfChanged()
         NSWorkspace.shared.open(TerminalKeymap.fileURL)

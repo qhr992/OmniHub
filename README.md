@@ -47,7 +47,17 @@ A menu bar suite for macOS. Screenshots, pinned images, clipboard history, Now P
 - Local, remote and dynamic port forwarding; SOCKS5 and HTTP proxies.
 - A credential vault stored in the macOS Keychain.
 
-**Activity.** Live CPU, GPU, memory and disk graphs, local IP addresses, and an optional public IP lookup.
+**Activity.**
+- Live CPU, GPU, memory, disk and network speed graphs.
+- Battery: charge, state, health, cycle count, temperature and power.
+- Top apps by CPU or memory, with each app's helper processes counted under it.
+- Keep Awake: stops the display from sleeping for 30 minutes, 1 or 2 hours, or until turned off (also in the menu bar menu).
+- Local IP addresses and an optional public IP lookup.
+
+**Appearance.**
+- The card's background opacity can be lowered to show the blurred desktop behind it.
+- The menu bar can show the runner or the status icon; the dock ball can show the logo or the status icon; the status icon can also be shown in the Dock.
+- The status icon is a live round icon: its ring, middle and dots each show what you pick (battery, CPU, memory, disk, Wi-Fi, network, volume).
 
 ## Installation
 

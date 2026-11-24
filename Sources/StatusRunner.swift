@@ -17,8 +17,12 @@ final class StatusRunner {
         let center = NotificationCenter.default
         center.addObserver(self, selector: #selector(statsChanged), name: .activityChanged, object: nil)
         center.addObserver(self, selector: #selector(statsChanged), name: .settingsChanged, object: nil)
+        center.addObserver(self, selector: #selector(statsChanged), name: .statusIconChanged, object: nil)
         reschedule()
     }
+
+    /// Settings › Appearance: the status icon stands in for the runner.
+    private var showsStatusIcon: Bool { StatusIcon.inMenuBar }
 
     /// 0 = memory, 1 = CPU.
     private var metric: Int { Prefs.int("status.metric", 0) }
@@ -30,6 +34,19 @@ final class StatusRunner {
     }
 
     @objc private func statsChanged() {
+        if showsStatusIcon {
+            if timer != nil || interval != 0 {
+                interval = 0
+                reschedule()
+            }
+            button?.image = StatusIcon.shared.image(size: 18, foreground: .labelColor)
+            button?.toolTip = StatusIcon.shared.summary
+            return
+        }
+        if button?.image?.isTemplate == false {
+            // Back from the status icon.
+            interval = -1
+        }
         let stats = SystemStats.shared.snapshot
         let value: Double
         if metric == 1 {
@@ -50,6 +67,7 @@ final class StatusRunner {
     private func reschedule() {
         timer?.invalidate()
         timer = nil
+        guard !showsStatusIcon else { return }
         guard animated, interval > 0 else {
             index = 0
             button?.image = frames[0]

@@ -1,11 +1,15 @@
 import AppKit
 
-/// Activity page: a tile with a live chart per metric (CPU, GPU, memory, disk),
+/// Activity page: Keep Awake, a tile with a live chart per metric (CPU,
+/// GPU, memory, disk, network) and one for the battery, the busiest apps,
 /// then the IP addresses as plain rows. Each can be switched off in settings.
 final class ActivityView: NSView {
     private let stack = NSStackView()
     private var widthConstraint: NSLayoutConstraint!
     private var tiles: [String: MetricTile] = [:]
+    private var batteryTile: BatteryTile?
+    private var keepAwakeRow: KeepAwakeRow?
+    private var topApps: TopAppsBox?
     private var signature = ""
 
     init() {
@@ -48,19 +52,22 @@ final class ActivityView: NSView {
         "cpu": NSColor(srgbRed: 0.45, green: 0.85, blue: 1.0, alpha: 1),
         "gpu": NSColor(srgbRed: 0.72, green: 0.62, blue: 1.0, alpha: 1),
         "memory": NSColor(srgbRed: 0.45, green: 0.92, blue: 0.62, alpha: 1),
-        "disk": NSColor(srgbRed: 1.0, green: 0.72, blue: 0.40, alpha: 1)
+        "disk": NSColor(srgbRed: 1.0, green: 0.72, blue: 0.40, alpha: 1),
+        "network": NSColor(srgbRed: 1.0, green: 0.50, blue: 0.75, alpha: 1)
     ]
 
     @objc private func refresh() {
         let stats = SystemStats.shared.snapshot
         let history = SystemStats.shared.history
         var metrics: [String] = []
-        for key in ["cpu", "gpu", "memory", "disk"] where Prefs.bool("activity.\(key)", true) { metrics.append(key) }
+        for key in ["cpu", "gpu", "memory", "disk", "network"] where Prefs.bool("activity.\(key)", true) { metrics.append(key) }
+        if stats.battery != nil, Prefs.bool("activity.battery", true) { metrics.append("battery") }
         let showIP = Prefs.bool("activity.ip", true)
         let showPublic = showIP && Prefs.bool("activity.publicIP", false)
+        let extras = "\(Prefs.bool("activity.keepAwake", true))|\(Prefs.bool("activity.topApps", true))"
         // The view tree is rebuilt only when what is shown changes; the
         // numbers and charts are updated in place.
-        let next = metrics.joined(separator: ",") + "|\(showIP)|\(showPublic)|\(stats.localIPs.map(\.name))|\(widthConstraint.constant)"
+        let next = metrics.joined(separator: ",") + "|\(showIP)|\(showPublic)|\(extras)|\(stats.localIPs.map(\.name))|\(widthConstraint.constant)"
         if next != signature {
             signature = next
             rebuild(metrics: metrics)
@@ -70,6 +77,10 @@ final class ActivityView: NSView {
             value.map { String(format: "%.0f%%", $0 * 100) } ?? "—"
         }
         debugRows = []
+        if let row = keepAwakeRow {
+            row.sync()
+            debugRows.append("Keep Awake: \(KeepAwake.shared.statusText)")
+        }
         if let tile = tiles["cpu"] {
             tile.update(value: percent(stats.cpu), detail: L("%ld cores", ProcessInfo.processInfo.activeProcessorCount), samples: history.cpu, ceiling: 1)
             debugRows.append("CPU: \(percent(stats.cpu)) samples=\(history.cpu.count)")
@@ -92,6 +103,19 @@ final class ActivityView: NSView {
             tile.update(value: percent(fraction), detail: detail, samples: history.diskIO, ceiling: nil)
             debugRows.append("Disk: \(percent(fraction)) \(detail) samples=\(history.diskIO.count)")
         }
+        if let tile = tiles["network"] {
+            tile.update(value: "↓ " + SystemStats.rate(stats.netIn), detail: "↑ " + SystemStats.rate(stats.netOut),
+                        samples: history.network, ceiling: nil)
+            debugRows.append("Network: in \(SystemStats.rate(stats.netIn)) out \(SystemStats.rate(stats.netOut)) samples=\(history.network.count)")
+        }
+        if let tile = batteryTile, let battery = stats.battery {
+            tile.update(battery)
+            debugRows.append("Battery: \(tile.debugText)")
+        }
+        if let box = topApps {
+            box.refresh()
+            debugRows += box.debugRows.map { "Top app · \($0)" }
+        }
         for (index, entry) in stats.localIPs.enumerated() {
             ipValues["local\(index)"]?.stringValue = entry.address
             debugRows.append("IP · \(entry.name): \(entry.address)")
@@ -107,6 +131,9 @@ final class ActivityView: NSView {
             view.removeFromSuperview()
         }
         tiles = [:]
+        batteryTile = nil
+        keepAwakeRow = nil
+        topApps = nil
         ipValues = [:]
         let width = widthConstraint.constant
         // Two tiles per row when there is room for it.
@@ -114,7 +141,15 @@ final class ActivityView: NSView {
         let gap: CGFloat = 8
         let tileWidth = (width - gap * CGFloat(perRow - 1)) / CGFloat(perRow)
         let titles = ["cpu": ("cpu", "CPU"), "gpu": ("cube.transparent", "GPU"),
-                      "memory": ("memorychip", L("Memory")), "disk": ("internaldrive", L("Disk"))]
+                      "memory": ("memorychip", L("Memory")), "disk": ("internaldrive", L("Disk")),
+                      "network": ("arrow.up.arrow.down", L("Network"))]
+
+        if Prefs.bool("activity.keepAwake", true) {
+            let row = KeepAwakeRow()
+            keepAwakeRow = row
+            stack.addArrangedSubview(row)
+            row.widthAnchor.constraint(equalTo: stack.widthAnchor).isActive = true
+        }
 
         var index = 0
         while index < metrics.count {
@@ -122,14 +157,29 @@ final class ActivityView: NSView {
             row.orientation = .horizontal
             row.spacing = gap
             for key in metrics[index..<min(index + perRow, metrics.count)] {
-                let (symbol, title) = titles[key] ?? ("gauge", key)
-                let tile = MetricTile(symbol: symbol, title: title, tint: Self.palette[key] ?? Self.accent)
+                let tile: NSView
+                if key == "battery" {
+                    let battery = BatteryTile()
+                    batteryTile = battery
+                    tile = battery
+                } else {
+                    let (symbol, title) = titles[key] ?? ("gauge", key)
+                    let metric = MetricTile(symbol: symbol, title: title, tint: Self.palette[key] ?? Self.accent)
+                    tiles[key] = metric
+                    tile = metric
+                }
                 tile.widthAnchor.constraint(equalToConstant: tileWidth).isActive = true
-                tiles[key] = tile
                 row.addArrangedSubview(tile)
             }
             stack.addArrangedSubview(row)
             index += perRow
+        }
+
+        if Prefs.bool("activity.topApps", true) {
+            let box = TopAppsBox()
+            topApps = box
+            stack.addArrangedSubview(box)
+            box.widthAnchor.constraint(equalTo: stack.widthAnchor).isActive = true
         }
 
         if Prefs.bool("activity.ip", true) {

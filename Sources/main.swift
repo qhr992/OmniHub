@@ -106,6 +106,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             L10nSelfTest.run(pictures: folder)
             return
         }
+        if let index = args.firstIndex(of: "--status-selftest") {
+            let folder = index + 1 < args.count ? URL(fileURLWithPath: args[index + 1], isDirectory: true) : nil
+            StatusSelfTest.run(pictures: folder)
+            return
+        }
         if args.contains("--tab-selftest") {
             TabSelfTest.run()
             return
@@ -157,7 +162,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
         ClipboardStore.shared.start()
         MediaObserver.shared.start()
+        StatusIcon.shared.start()
         if !isToolRun {
+            applyDockTile()
+            let center = NotificationCenter.default
+            center.addObserver(self, selector: #selector(applyDockTile), name: .settingsChanged, object: nil)
+            center.addObserver(self, selector: #selector(refreshDockTile), name: .statusIconChanged, object: nil)
             ShelfStore.shared.startPurging()
             UpdateChecker.shared.start()
         }
@@ -188,6 +198,41 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 }
             }
         }
+    }
+
+    // MARK: Dock tile
+
+    private var dockTileView: NSImageView?
+
+    /// Settings › Appearance › Show in the Dock: the status icon as a live
+    /// Dock tile. OmniHub is a menu-bar app otherwise, with no Dock icon.
+    @objc private func applyDockTile() {
+        let wanted = StatusIcon.inDock
+        guard wanted != (dockTileView != nil) else { return }
+        if wanted {
+            NSApp.setActivationPolicy(.regular)
+            let view = NSImageView(frame: NSRect(origin: .zero, size: NSApp.dockTile.size))
+            view.imageScaling = .scaleProportionallyUpOrDown
+            NSApp.dockTile.contentView = view
+            dockTileView = view
+            refreshDockTile()
+        } else {
+            NSApp.dockTile.contentView = nil
+            dockTileView = nil
+            NSApp.setActivationPolicy(.accessory)
+        }
+    }
+
+    @objc private func refreshDockTile() {
+        guard let view = dockTileView else { return }
+        view.image = StatusIcon.shared.image(size: 256, foreground: .white, plate: true)
+        NSApp.dockTile.display()
+    }
+
+    /// A click on the Dock tile opens (or folds) the card.
+    func applicationShouldHandleReopen(_ sender: NSApplication, hasVisibleWindows flag: Bool) -> Bool {
+        FloatingDockPanel.toggle()
+        return false
     }
 
     func applicationWillTerminate(_ notification: Notification) {
@@ -838,6 +883,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         out.append("appActive = \(NSApp.isActive) keyWindow = \(NSApp.keyWindow.map { "\(type(of: $0))" } ?? "nil")")
         out.append("-- status icon --")
         out.append(statusRunner?.debugState ?? "(no status item)")
+        out.append("statusIcon menuBar=\(StatusIcon.inMenuBar) ball=\(StatusIcon.onBall) dock=\(StatusIcon.inDock) \(StatusIcon.shared.summary)")
+        out.append("keepAwake = \(KeepAwake.shared.statusText)")
         out.append("-- holiday --")
         out.append(Holidays.countdownText())
         out.append("-- terminal --")
@@ -911,6 +958,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         addItem(menu, "Activity", key(.activity), #selector(showActivity))
         menu.addItem(.separator())
         addItem(menu, "Show / Hide Dock", key(.dock), #selector(toggleDock))
+        let awake = addItem(menu, "Keep Awake", "", #selector(noop))
+        awake.submenu = KeepAwake.shared.menu(target: self, action: #selector(keepAwakePicked(_:)))
+        awake.state = KeepAwake.shared.isOn ? .on : .off
         addItem(menu, "Play / Pause", key(.playPause), #selector(togglePlayback))
         menu.addItem(.separator())
         // Only while a newer version is out; checking needs no click.
@@ -1010,6 +1060,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     @objc private func updateNow() { UpdateChecker.shared.updateNow() }
+    @objc private func noop() {}
+    @objc private func keepAwakePicked(_ sender: NSMenuItem) {
+        KeepAwake.shared.choose(sender.tag < 0 ? nil : sender.tag)
+    }
     @objc private func quit() { NSApp.terminate(nil) }
 }
 

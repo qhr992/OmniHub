@@ -52,7 +52,7 @@ enum L10nSelfTest {
         }
         let settings = FloatingDockPanel.settings
         if page(.settings, "settings") != nil {
-            for index in 0..<8 {
+            for index in 0..<settings.tabCount {
                 settings.select(tab: index)
                 inspect(settings, "settings-\(index + 1)")
             }

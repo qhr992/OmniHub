@@ -75,6 +75,8 @@ final class FloatingDockPanel: NSPanel, EscDismissable {
     // Card chrome
     private let cardView = CardView()
     private let backdrop = NSView()
+    /// The blurred desktop, seen through when the card is less than opaque.
+    private let glass = NSVisualEffectView()
     private let shade = NSView()
     private let nav = NSStackView()
     /// Clipboard and Settings, at the far end of the entry row.
@@ -208,6 +210,11 @@ final class FloatingDockPanel: NSPanel, EscDismissable {
     static var terminalIfCreated: TerminalPane? { shared?.terminalCreated == true ? shared?.terminalPane : nil }
     static var clipboard: ClipboardPane { instance().clipboardPane }
     static var shelf: ShelfPane { instance().shelfPane }
+    static var debugBallShowsStatus: Bool { instance().ballShowsStatus }
+    static var debugCardGlass: (shown: Bool, artwork: CGFloat) {
+        let panel = instance()
+        return (!panel.glass.isHidden, panel.backdrop.alphaValue)
+    }
     static var debugBallAcceptsFiles: Bool { instance().ball.registeredDraggedTypes.contains(.fileURL) }
     static var agenda: AgendaPane { instance().agendaPane }
     static var settings: SettingsPane { instance().settingsPane }
@@ -344,6 +351,8 @@ final class FloatingDockPanel: NSPanel, EscDismissable {
                            name: NSApplication.didChangeScreenParametersNotification, object: nil)
         center.addObserver(self, selector: #selector(activityChanged), name: .activityChanged, object: nil)
         center.addObserver(self, selector: #selector(updateStatusChanged), name: .updateStatusChanged, object: nil)
+        center.addObserver(self, selector: #selector(ballIconChanged), name: .statusIconChanged, object: nil)
+        center.addObserver(self, selector: #selector(ballIconChanged), name: .settingsChanged, object: nil)
         updateStatusChanged()
         center.addObserver(forName: MediaObserver.controlUnavailable, object: nil, queue: .main) { [weak self] note in
             self?.showControlNote(note.object as? String ?? "")
@@ -419,7 +428,29 @@ final class FloatingDockPanel: NSPanel, EscDismissable {
         closeCard()
     }
 
-    @objc private func dataChanged() { refresh() }
+    @objc private func dataChanged() {
+        applyCardOpacity()
+        refresh()
+    }
+
+    /// How much of the page's veil is kept at the chosen opacity.
+    private var veilScale: CGFloat { 0.55 + 0.45 * cardOpacity }
+
+    /// Settings › Appearance › Background: 30–100 %.
+    private var cardOpacity: CGFloat {
+        CGFloat(min(max(Prefs.int(SettingsPane.cardOpacityKey, 100), 30), 100)) / 100
+    }
+
+    /// Below 100 % the artwork and the dark base fade and the blurred
+    /// desktop shows through; the veil thins less, so text stays readable.
+    private func applyCardOpacity() {
+        let opacity = cardOpacity
+        glass.isHidden = opacity >= 0.999
+        backdrop.alphaValue = opacity
+        cardView.layer?.backgroundColor = NSColor(white: 0.04, alpha: 0.96 * opacity).cgColor
+        shade.layer?.backgroundColor = NSColor(srgbRed: 0.05, green: 0.05, blue: 0.10,
+                                               alpha: Self.dim(for: page) * veilScale).cgColor
+    }
 
     /// Shows or hides the Update icon; the card is laid out again only
     /// when it appears or goes (not on every percent of a download).
@@ -433,6 +464,15 @@ final class FloatingDockPanel: NSPanel, EscDismissable {
     }
 
     @objc private func updateTapped() { UpdateChecker.shared.updateNow() }
+
+    /// Whether the ball shows the status icon right now.
+    private var ballShowsStatus = false
+
+    /// Settings › Appearance: logo or status icon on the ball.
+    @objc private func ballIconChanged() {
+        guard StatusIcon.onBall || ballShowsStatus else { return }
+        applyIcon()
+    }
 
     /// The activity page grows and shrinks with what it shows.
     @objc private func activityChanged() {
@@ -474,6 +514,11 @@ final class FloatingDockPanel: NSPanel, EscDismissable {
         backdrop.autoresizingMask = [.width, .height]
         shade.wantsLayer = true
         shade.autoresizingMask = [.width, .height]
+        glass.material = .hudWindow
+        glass.blendingMode = .behindWindow
+        glass.state = .active
+        glass.autoresizingMask = [.width, .height]
+        cardView.addSubview(glass)
         cardView.addSubview(backdrop)
         cardView.addSubview(shade)
         cardView.isHidden = true
@@ -938,6 +983,15 @@ final class FloatingDockPanel: NSPanel, EscDismissable {
     }
 
     private func applyIcon() {
+        ballShowsStatus = StatusIcon.onBall
+        if ballShowsStatus {
+            // Drawn at twice the ball's size: the layer takes it as pixels.
+            iconImage = StatusIcon.shared.image(size: Self.iconSize * 2, foreground: .white, inset: Self.iconSize * 0.2)
+            ball.toolTip = StatusIcon.shared.summary
+            refresh()
+            return
+        }
+        ball.toolTip = nil
         let path = Prefs.string("dock.iconPath")
         var image: NSImage?
         if !path.isEmpty, let data = try? Data(contentsOf: URL(fileURLWithPath: path)) {
@@ -1143,8 +1197,9 @@ final class FloatingDockPanel: NSPanel, EscDismissable {
         cardView.frame.size = size
         backdrop.frame = NSRect(origin: .zero, size: size)
         shade.frame = backdrop.frame
+        glass.frame = backdrop.frame
         // Pages full of controls get a heavier veil than the two glanceable ones.
-        shade.layer?.backgroundColor = NSColor(srgbRed: 0.05, green: 0.05, blue: 0.10, alpha: Self.dim(for: page)).cgColor
+        applyCardOpacity()
 
         for (key, button) in navButtons { button.isHidden = !Page.isShown(key) }
         nav.orientation = horizontal ? .horizontal : .vertical
@@ -1577,7 +1632,7 @@ final class FloatingDockPanel: NSPanel, EscDismissable {
         let (window, ballRect, cardRect) = geometry()
         guard let cardRect, let newImage = cardSnapshot(contentOnly: true) else { return nil }
         let morph = Morph(from: oldRect, to: cardRect, oldContent: oldImage, newContent: newImage,
-                          dimFrom: Self.dim(for: oldPage), dimTo: Self.dim(for: page),
+                          dimFrom: Self.dim(for: oldPage) * veilScale, dimTo: Self.dim(for: page) * veilScale,
                           anchorRight: ballRect.minX >= cardRect.maxX - 1)
         return ZoomPlan(stage: window.union(oldRect), ballRect: ballRect, parts: [], morph: morph)
     }
@@ -1675,6 +1730,15 @@ final class FloatingDockPanel: NSPanel, EscDismissable {
         back.layer?.contents = backdrop.layer?.contents
         back.layer?.contentsGravity = .resizeAspectFill
         back.autoresizingMask = [.width, .height]
+        back.alphaValue = cardOpacity
+        if cardOpacity < 0.999 {
+            let blur = NSVisualEffectView()
+            blur.material = .hudWindow
+            blur.blendingMode = .behindWindow
+            blur.state = .active
+            blur.autoresizingMask = [.width, .height]
+            card.addSubview(blur)
+        }
         let veil = NSView()
         veil.wantsLayer = true
         veil.layer?.backgroundColor = NSColor(srgbRed: 0.05, green: 0.05, blue: 0.10, alpha: 1).cgColor

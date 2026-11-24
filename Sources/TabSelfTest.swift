@@ -81,7 +81,8 @@ enum TabSelfTest {
             guard !view.isHidden else { return }
             if view !== scope, view is TabScope { return }
             if let control = view as? NSControl {
-                let label = (control as? NSTextField).map { !$0.isEditable } ?? false
+                // Labels and pictures (badges, previews) take no input.
+                let label = (control as? NSTextField).map { !$0.isEditable } ?? (control as? NSImageView).map { !$0.isEditable } ?? false
                 if control.isEnabled, !label, !(control is NSScroller), control.bounds.width > 0 {
                     result.append(control)
                 }
@@ -128,6 +129,12 @@ enum TabSelfTest {
         let missing = controls(in: scope).filter { control in !stops.contains { $0 === control } }
         check("\(title): every control is a Tab stop", missing.isEmpty, "skipped \(missing.map(name))")
         let ordered = layoutOrder ?? stops
+        // Tabbing scrolled the page to its last control; compare unscrolled.
+        for view in ordered {
+            guard let scroll = view.enclosingScrollView, scroll.isDescendant(of: scope) else { continue }
+            scroll.contentView.scroll(to: .zero)
+            scroll.reflectScrolledClipView(scroll.contentView)
+        }
         check("\(title): the order follows the layout", inLayoutOrder(ordered),
               "\(ordered.map { "\(name($0))@\(Int($0.convert($0.bounds, to: nil).midY))" })")
         return stops
@@ -142,8 +149,7 @@ enum TabSelfTest {
             check("settings page is in the card", false)
             return
         }
-        let titles = ["General", "Shortcuts", "Screenshot", "Clipboard", "Agenda", "Dock", "Activity", "Terminal"]
-        for (index, title) in titles.enumerated() {
+        for (index, title) in pane.tabTitles.enumerated() {
             pane.select(tab: index)
             walk("Settings › \(title)", scope: pane, window: window)
         }

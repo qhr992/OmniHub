@@ -62,6 +62,14 @@ SOURCES=(
   Sources/RemoteSelfTest.swift
   Sources/SystemStats.swift
   Sources/ActivityView.swift
+  Sources/ActivityExtras.swift
+  Sources/KeepAwake.swift
+  Sources/Battery.swift
+  Sources/TopApps.swift
+  Sources/StatusIcon.swift
+  Sources/SettingsSection.swift
+  Sources/SettingsAppearance.swift
+  Sources/StatusSelfTest.swift
   Sources/BootAnimation.swift
   Sources/MarqueeLabel.swift
   Sources/FloatingDockPanel.swift
