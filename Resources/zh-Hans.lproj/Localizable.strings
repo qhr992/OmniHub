@@ -432,10 +432,8 @@
 "Screen Recording permission needed" = "需要屏幕录制权限";
 "System Settings → Privacy & Security → Screen Recording: enable OmniHub, then restart it.\n\nIf it is already enabled, the app was updated: remove it from the list (−) and add it again." = "请在「系统设置 → 隐私与安全性 → 屏幕录制」中允许 OmniHub，然后重启它。\n\n如果已经允许过，说明应用更新了：把它从列表中移除（−）后再重新添加。";
 "Quit OmniHub" = "退出 OmniHub";
-"Check for Updates…" = "检查更新…";
 "Updates" = "更新";
 "Check for updates automatically" = "自动检查更新";
-"Check Now" = "立即检查";
 "Could not check for updates" = "无法检查更新";
 "OmniHub is up to date" = "OmniHub 已是最新版本";
 "You have the latest version, %@." = "当前已是最新版本 %@。";
@@ -444,7 +442,9 @@
 "You have %@." = "当前版本 %@。";
 "Download and Install" = "下载并安装";
 "Later" = "以后再说";
-"Skip This Version" = "跳过这个版本";
+"Update" = "更新";
+"Update to %@" = "更新到 %@";
+"Restart to Update" = "重启以完成更新";
 "OmniHub %@ is ready to install" = "OmniHub %@ 已下载好";
 "OmniHub restarts to finish." = "重启 OmniHub 即可完成安装。";
 "Downloading OmniHub %@…" = "正在下载 OmniHub %@…";

@@ -444,7 +444,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 NSApp.postEvent(key, atStart: false)
             }
         case "check-updates":
-            DispatchQueue.main.async { UpdateChecker.shared.checkNow() }
+            DispatchQueue.main.async { UpdateChecker.shared.updateNow() }
         case "diagnose":
             try? diagnosticsText().write(to: Store.url("diagnostics.txt"), atomically: true, encoding: .utf8)
         case "snapshot":
@@ -913,7 +913,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         addItem(menu, "Show / Hide Dock", key(.dock), #selector(toggleDock))
         addItem(menu, "Play / Pause", key(.playPause), #selector(togglePlayback))
         menu.addItem(.separator())
-        addItem(menu, "Check for Updates…", "", #selector(checkForUpdates))
+        // Only while a newer version is out; checking needs no click.
+        if let update = UpdateChecker.shared.actionTitle {
+            // No action while downloading: the menu then greys it out.
+            let item = NSMenuItem(title: update, action: UpdateChecker.shared.canAct ? #selector(updateNow) : nil,
+                                  keyEquivalent: "")
+            item.target = self
+            item.image = NSImage(systemSymbolName: "arrow.down.circle.fill", accessibilityDescription: nil)
+            menu.addItem(item)
+        }
         addItem(menu, "Settings…", "", #selector(showSettings))
         addItem(menu, "Quit OmniHub", "", #selector(quit))
     }
@@ -1001,7 +1009,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         DispatchQueue.main.async { _ = finished }
     }
 
-    @objc private func checkForUpdates() { UpdateChecker.shared.checkNow() }
+    @objc private func updateNow() { UpdateChecker.shared.updateNow() }
     @objc private func quit() { NSApp.terminate(nil) }
 }
 

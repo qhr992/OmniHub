@@ -1,6 +1,7 @@
 import AppKit
 
-/// Checks of the update checker (`OmniHub --update-selftest`).
+/// Checks of the update checker (`OmniHub --update-selftest [dir]`; with a
+/// directory, a picture of the card showing the Update icon is saved there).
 ///
 /// Version comparison and feed parsing run on fixed input; then the real
 /// feed is read, the newest DMG downloaded, its checksum checked and the
@@ -18,6 +19,7 @@ enum UpdateSelfTest {
     static func run() {
         comparison()
         parsing()
+        buttons()
         live()
         print(failures == 0 ? "RESULT: all passed" : "RESULT: \(failures) failed")
         exit(failures == 0 ? 0 : 1)
@@ -59,6 +61,33 @@ enum UpdateSelfTest {
         } catch {
             check("the feed parses", false, "\(error)")
         }
+    }
+
+    /// The Update buttons appear only while something newer is out.
+    private static func buttons() {
+        FloatingDockPanel.headless = true
+        let position = (Prefs.double("dock.posX", 0.5), Prefs.double("dock.posY", 0))
+        defer {
+            Prefs.set("dock.posX", position.0)
+            Prefs.set("dock.posY", position.1)
+        }
+        _ = FloatingDockPanel.debugCardSize(page: .home, x: 0.5, y: 0)
+        let checker = UpdateChecker.shared
+        checker.debugFound(nil)
+        check("nothing newer: no Update button", checker.actionTitle == nil
+              && !FloatingDockPanel.debugNav.trailing.contains { $0.hasPrefix("Update") }, "\(FloatingDockPanel.debugNav)")
+        let release = UpdateChecker.Release(version: "9.9.9", page: URL(string: "https://example.invalid")!,
+                                            dmg: URL(string: "https://example.invalid/x.dmg")!, sha256: nil, notes: [])
+        checker.debugFound(release)
+        check("newer found: the card shows Update to 9.9.9",
+              FloatingDockPanel.debugNav.trailing.first == "Update to 9.9.9", "\(FloatingDockPanel.debugNav)")
+        if let index = CommandLine.arguments.firstIndex(of: "--update-selftest"),
+           index + 1 < CommandLine.arguments.count {
+            _ = FloatingDockPanel.snapshot(to: URL(fileURLWithPath: CommandLine.arguments[index + 1])
+                .appendingPathComponent("update-button.png"))
+        }
+        checker.debugFound(nil)
+        check("and hides it again", FloatingDockPanel.debugNav.trailing.first != "Update to 9.9.9")
     }
 
     /// The real feed, download and checks.
