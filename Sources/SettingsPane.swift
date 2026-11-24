@@ -398,7 +398,7 @@ final class SettingsPane: NSView, DockPage {
                 PrefCheckbox("Show “Copied” when done", key: "snip.toast", fallback: true)
             ]),
             section("Scrolling Screenshot", "arrow.up.and.down.text.horizontal", Tint.blue, [
-                hint("Start from the screenshot toolbar, or give it a shortcut, then scroll down yourself. It stops a few seconds after you stop, or on Esc / Done.")
+                hint("Start from the screenshot toolbar or the menu bar menu, then scroll down yourself. It stops a few seconds after you stop, or on Esc / Done.")
             ]),
             section("Pins", "pin.fill", Tint.pink, [
                 hint("Zoom with scroll, pinch, or the − ＋ buttons shown on hover; × closes. Text in a pin can be selected and copied.")

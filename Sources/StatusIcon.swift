@@ -278,7 +278,7 @@ final class StatusIcon {
 
     /// Keep Awake: a small amber coffee cup — after the figure on the ring's
     /// top, or in the top right corner when there is no ring.
-    static let awakeSymbol = "cup.and.saucer.fill"
+    static let awakeSymbol = KeepAwake.symbolName
 
     /// The cup's width beside the figure, as a share of the icon.
     private static let awakeWidth: CGFloat = 0.24

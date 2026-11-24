@@ -269,8 +269,6 @@ final class FloatingDockPanel: NSPanel, EscDismissable {
     /// Whether the card shows `view` right now.
     static func isShowing(_ view: NSView) -> Bool { shared?.shownPage === view && shared?.expanded == true }
 
-    /// Lays Home out side by side, `width` wide (the main window's Home).
-    static func layoutHome(width: CGFloat) { instance().layoutHome(horizontal: true, width: width) }
 
     // Test hooks for the dock self-test.
     static func debugCardSize(page: Page, x: Double, y: Double) -> NSSize {

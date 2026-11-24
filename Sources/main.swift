@@ -259,6 +259,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     /// settings over the first time the renamed app starts.
     private func migrateLegacyPreferences() {
         let defaults = UserDefaults.standard
+        // Scrolling capture has no shortcut any more: drop one set earlier.
+        defaults.removeObject(forKey: "hotkey.longSnip")
         guard !defaults.bool(forKey: "migratedFromSnaCut") else { return }
         defaults.set(true, forKey: "migratedFromSnaCut")
         guard let legacy = defaults.persistentDomain(forName: "com.local.snacut") else { return }
@@ -796,7 +798,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         hotkeys.setTerminalTyping(true)
         let typingState = HotKeyAction.allCases.map { "\($0.rawValue)=\(hotkeys.isActive($0))" }.joined(separator: " ")
         let ctrlOnlyOff = HotKeyAction.allCases.allSatisfy { action in
-            guard let c = combo(action), ![.terminal, .snip, .longSnip].contains(action),
+            guard let c = combo(action), ![.terminal, .snip].contains(action),
                   c.modifiers & UInt32(cmdKey) == 0 else { return true }
             return !hotkeys.isActive(action)
         }
@@ -807,7 +809,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                combo(.snip) == nil || hotkeys.isActive(.snip), typingState)
         expect("typing in a shell: other ⌘ shortcuts the terminal does not use stay, its own ones yield",
                HotKeyAction.allCases.allSatisfy { action in
-                   guard ![.snip, .longSnip].contains(action),
+                   guard ![.snip].contains(action),
                          let c = combo(action), c.modifiers & UInt32(cmdKey) != 0 else { return true }
                    let terminalKey = TerminalKeymap.shared.isBound(keyCode: c.keyCode, carbonModifiers: c.modifiers)
                    return hotkeys.isActive(action) != terminalKey || action == .terminal
@@ -1016,7 +1018,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         func key(_ action: HotKeyAction) -> String { HotKeyCenter.shared.display(for: action) }
 
         addItem(menu, "Screenshot", key(.snip), #selector(snipNormal))
-        addItem(menu, "Scrolling Screenshot", key(.longSnip), #selector(snipLong))
+        addItem(menu, "Scrolling Screenshot", "", #selector(snipLong))
         addItem(menu, "Pin Clipboard Image", key(.pinClipboard), #selector(pinClipboard))
         addItem(menu, "Close All Pins", "", #selector(closePins))
         menu.addItem(.separator())
@@ -1059,7 +1061,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private func registerHotKeys() {
         let center = HotKeyCenter.shared
         center.setHandler(.snip) { [weak self] in self?.startSnip(autoScroll: false) }
-        center.setHandler(.longSnip) { [weak self] in self?.startSnip(autoScroll: true) }
         center.setHandler(.pinClipboard) { PinnedImageWindow.pinClipboard() }
         center.setHandler(.clipboard) { FloatingDockPanel.open(.clipboard) }
         center.setHandler(.terminal) { FloatingDockPanel.open(.terminal) }

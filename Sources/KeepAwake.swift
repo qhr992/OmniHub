@@ -11,6 +11,9 @@ extension Notification.Name {
 final class KeepAwake {
     static let shared = KeepAwake()
 
+    /// Its sign wherever it is shown (status icon, Home).
+    static let symbolName = "cup.and.saucer.fill"
+
     /// The choices offered, in minutes; 0 = until turned off.
     static let choices = [30, 60, 120, 0]
 

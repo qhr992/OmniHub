@@ -68,12 +68,11 @@ struct KeyCombo: Equatable {
 
 /// Everything that can be bound to a global shortcut.
 enum HotKeyAction: String, CaseIterable {
-    case snip, longSnip, pinClipboard, clipboard, terminal, tasks, activity, dock, playPause
+    case snip, pinClipboard, clipboard, terminal, tasks, activity, dock, playPause
 
     var title: String {
         switch self {
         case .snip: return L("Screenshot")
-        case .longSnip: return L("Scrolling Screenshot")
         case .pinClipboard: return L("Pin Clipboard Image")
         case .clipboard: return L("Clipboard")
         case .terminal: return L("Terminal")
@@ -89,7 +88,6 @@ enum HotKeyAction: String, CaseIterable {
         let cmd = UInt32(cmdKey), shift = UInt32(shiftKey), ctrl = UInt32(controlKey)
         switch self {
         case .snip: return KeyCombo(keyCode: UInt32(kVK_ANSI_1), modifiers: cmd)
-        case .longSnip: return nil
         case .pinClipboard: return KeyCombo(keyCode: UInt32(kVK_ANSI_2), modifiers: cmd | shift)
         case .clipboard: return KeyCombo(keyCode: UInt32(kVK_ANSI_V), modifiers: cmd | shift)
         case .terminal: return KeyCombo(keyCode: UInt32(kVK_ANSI_Grave), modifiers: ctrl)
@@ -155,7 +153,7 @@ final class HotKeyCenter {
     private func yieldsToTerminal(_ combo: KeyCombo, action: HotKeyAction) -> Bool {
         // The terminal's own key and the screenshot keys never yield: a
         // screenshot shortcut works on every page, even while typing.
-        guard terminalTyping, ![.terminal, .snip, .longSnip].contains(action) else { return false }
+        guard terminalTyping, ![.terminal, .snip].contains(action) else { return false }
         if combo.modifiers & UInt32(cmdKey) == 0 { return true }
         return TerminalKeymap.shared.isBound(keyCode: combo.keyCode, carbonModifiers: combo.modifiers)
     }

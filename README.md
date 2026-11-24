@@ -100,7 +100,7 @@ Grant Screen Recording in **System Settings → Privacy & Security → Screen Re
 | `⇧⌘O` | Show or hide the dock |
 | `⇧⌘Space` | Play / pause |
 
-Scrolling capture has no default shortcut. Every shortcut can be changed or cleared in **Settings → Shortcuts**.
+Scrolling capture is started from the menu bar menu or the screenshot toolbar. Every shortcut can be changed or cleared in **Settings → Shortcuts**.
 
 ## URL scheme
 

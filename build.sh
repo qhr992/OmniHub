@@ -23,6 +23,9 @@ SOURCES=(
   Sources/SettingsPane.swift
   Sources/SidebarList.swift
   Sources/MainWindow.swift
+  Sources/MainWindowMotion.swift
+  Sources/MainHome.swift
+  Sources/MainHomeTiles.swift
   Sources/MainSelfTest.swift
   Sources/ScreenCapture.swift
   Sources/WindowPicker.swift

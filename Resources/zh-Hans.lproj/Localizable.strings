@@ -17,7 +17,7 @@
 "Done" = "已完成";
 "Today" = "今天";
 "● Calendar   ● To-do" = "● 日历   ● 待办";
-"New to-do" = "新待办";
+"New to-do" = "新建待办";
 "Note (optional)" = "备注（可选）";
 "MMMM yyyy" = "yyyy年M月";
 "Save" = "保存";
@@ -265,7 +265,7 @@
 "Detect windows on hover (click selects the window)" = "悬停时识别窗口（单击选中整个窗口）";
 "Magnifier" = "放大镜";
 "Show “Copied” when done" = "完成后提示「已复制」";
-"Start from the screenshot toolbar, or give it a shortcut, then scroll down yourself. It stops a few seconds after you stop, or on Esc / Done." = "从截图工具栏开始，或给它设一个快捷键，然后自己往下滚动。停止滚动几秒后自动结束，也可以按 Esc 或点「完成」。";
+"Start from the screenshot toolbar or the menu bar menu, then scroll down yourself. It stops a few seconds after you stop, or on Esc / Done." = "从截图工具栏或菜单栏菜单开始，然后自己往下滚动。停止滚动几秒后自动结束，也可以按 Esc 或点「完成」。";
 "Pins" = "贴图";
 "Zoom with scroll, pinch, or the − ＋ buttons shown on hover; × closes. Text in a pin can be selected and copied." = "用滚轮、双指或悬停时出现的 − ＋ 按钮缩放，× 关闭。贴图里的文字可以选中复制。";
 "Keep history" = "保留历史";
@@ -432,6 +432,19 @@
 "Quit OmniHub" = "退出 OmniHub";
 "Hide OmniHub" = "隐藏 OmniHub";
 "Back" = "返回";
+"Late night" = "夜深了";
+"Good morning" = "早上好";
+"Good noon" = "中午好";
+"Good afternoon" = "下午好";
+"Good evening" = "晚上好";
+"Nothing playing" = "没有在播放";
+"System" = "系统";
+"Quick Actions" = "常用操作";
+"Tomorrow" = "明天";
+"Scrolling" = "长截图";
+"Pin Image" = "钉图";
+"Play music in any player to see its cover and lyrics here." = "在任意播放器里放音乐，这里会显示封面和歌词。";
+"Nothing waiting. Add one when something comes up." = "暂时没有待办，有事时随手加一条。";
 "Window" = "窗口";
 "Minimize" = "最小化";
 "Open in the dock card" = "正在悬浮窗中显示";

@@ -79,7 +79,7 @@ enum MainSelfTest {
             let inWindow = view?.isDescendant(of: window.debugHost) ?? false
             // Home and Activity scroll: as wide as the area; the rest fill it.
             let fits = [.home, .activity].contains(target)
-                ? abs(size.width - host.width) <= 2 && size.height > 30
+                ? abs(size.width - host.width) <= 2 && size.height > 200
                 : abs(size.width - host.width) <= 1 && abs(size.height - host.height) <= 1
             check("\(target.rawValue): in the window, \(Int(size.width))×\(Int(size.height)) in \(Int(host.width))×\(Int(host.height))",
                   inWindow && fits)
@@ -121,13 +121,19 @@ enum MainSelfTest {
               FloatingDockPanel.debugPage == nil && !window.debugPlaceholderShown
                 && abs(size.width - host.width) <= 1 && abs(size.height - host.height) <= 1)
 
-        _ = MainWindow.debugOpen(.home)
+        // Home: the window has its own; the card keeps its compact one.
+        let homeWindow = MainWindow.debugOpen(.home)
         _ = FloatingDockPanel.debugCardSize(page: .home, x: 0.5, y: 0)
-        let cardHome = FloatingDockPanel.debugPage == .home
-        _ = MainWindow.debugOpen(.home)
         settle()
-        check("Home moves between card and window", cardHome && FloatingDockPanel.debugPage == nil
-                && !window.debugPlaceholderShown)
+        check("Home in the window stays while the card shows its own",
+              FloatingDockPanel.debugPage == .home && homeWindow.debugShown === homeWindow.debugHome
+                && !homeWindow.debugPlaceholderShown)
+        FloatingDockPanel.closeCard()
+        let text = homeWindow.debugHome.debugText
+        check("Home: greeting, date, clock, six quick actions (\(text))",
+              !text.contains("greeting= ") && text.contains("clock=") && text.contains("actions=6"))
+        let height = homeWindow.debugHome.frame.height
+        check("Home: hero and two rows of cards (\(Int(height)) pt tall)", height > 300)
         for target in MainWindow.pages {
             _ = MainWindow.debugOpen(target)
             settle()

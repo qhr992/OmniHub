@@ -32,6 +32,8 @@ final class MainWindow: NSWindow, NSWindowDelegate {
     private var withList: [NSLayoutConstraint] = []
     private var settingsOnly: [NSLayoutConstraint] = []
     private weak var shown: NSView?
+    /// Home here is its own view (the card keeps its compact one).
+    private lazy var home = MainHomeView()
     private var scroll: NSScrollView?
 
     // MARK: Opening
@@ -118,7 +120,9 @@ final class MainWindow: NSWindow, NSWindowDelegate {
 
         backButton.target = self
         backButton.action = #selector(goBack)
-        for view in [side, edge, titleLabel, host, backButton] as [NSView] {
+        // The page list above the content, so it can slide away over it.
+        for view in [host, side, edge, titleLabel, backButton] as [NSView] {
+            view.wantsLayer = true
             view.translatesAutoresizingMaskIntoConstraints = false
             root.addSubview(view)
         }
@@ -167,13 +171,44 @@ final class MainWindow: NSWindow, NSWindowDelegate {
     }
 
     /// Settings takes the whole window: the page list goes, Back comes.
-    private func applyMode() {
+    private func applyMode(animated: Bool) {
         let settings = page == .settings
-        side.isHidden = settings
-        edge.isHidden = settings
-        backButton.isHidden = !settings
+        let changed = side.isHidden != settings
         NSLayoutConstraint.deactivate(settings ? withList : settingsOnly)
         NSLayoutConstraint.activate(settings ? settingsOnly : withList)
+        backButton.isHidden = !settings
+        guard animated, changed else {
+            side.isHidden = settings
+            edge.isHidden = settings
+            return
+        }
+        // The list stays up while it slides away, and is shown before it slides back.
+        side.isHidden = false
+        edge.isHidden = false
+        contentView?.layoutSubtreeIfNeeded()
+        MainWindowMotion.slideList([side.layer, edge.layer], width: Self.sidebarWidth + 1, out: settings) { [weak self] in
+            guard let self, self.page == .settings || !settings else { return }
+            self.side.isHidden = self.page == .settings
+            self.edge.isHidden = self.page == .settings
+        }
+    }
+
+    /// The page arriving: from the right into Settings, from the left back
+    /// out of it, fading up between other pages.
+    private func animateArrival(from old: Page) {
+        let kind: MainWindowMotion.Kind = page == .settings ? .enterSettings
+            : old == .settings ? .leaveSettings : .switchPage
+        let travel = MainWindowMotion.travel
+        switch kind {
+        case .enterSettings:
+            MainWindowMotion.arrive(host.layer, dx: travel, dy: 0, duration: MainWindowMotion.settingsDuration)
+            MainWindowMotion.arrive(backButton.layer, dx: -10, dy: 0, duration: 0.3, delay: 0.08)
+        case .leaveSettings:
+            MainWindowMotion.arrive(host.layer, dx: -travel, dy: 0, duration: MainWindowMotion.settingsDuration)
+        case .switchPage:
+            MainWindowMotion.arrive(host.layer, dx: 0, dy: -8, duration: MainWindowMotion.pageDuration)
+        }
+        MainWindowMotion.crossfade(titleLabel.layer)
     }
 
     /// Back from Settings to the page shown before it (⌘[ too).
@@ -186,12 +221,18 @@ final class MainWindow: NSWindow, NSWindowDelegate {
 
     private func show(_ target: Page, activate: Bool = true) {
         if target == .settings, page != .settings { beforeSettings = page }
+        let old = page
+        // Motion only for a change the person sees.
+        let animated = isVisible && !FloatingDockPanel.headless && old != target
         page = target
         Prefs.set(Self.pageKey, target.rawValue)
         sidebar.select(Self.pages.firstIndex(of: target) ?? 0)
         titleLabel.stringValue = target.title
-        applyMode()
+        // Home greets instead of a title.
+        titleLabel.isHidden = target == .home
+        applyMode(animated: animated)
         install()
+        if animated { animateArrival(from: old) }
         guard activate, !FloatingDockPanel.headless else { return }
         let wasOpen = isVisible
         // An ordinary window: a Dock icon and ⌘-Tab while it is open.
@@ -204,7 +245,7 @@ final class MainWindow: NSWindow, NSWindowDelegate {
 
     /// Puts the current page's view into the window, taking it from the card.
     private func install() {
-        let view = FloatingDockPanel.pageView(for: page)
+        let view = page == .home ? home : FloatingDockPanel.pageView(for: page)
         if view !== shown || !view.isDescendant(of: host) {
             if let old = shown, old !== view, old.isDescendant(of: host) {
                 (old as? DockPage)?.pageDidDisappear()
@@ -212,7 +253,7 @@ final class MainWindow: NSWindow, NSWindowDelegate {
             }
             scroll?.removeFromSuperview()
             scroll = nil
-            FloatingDockPanel.release(view)
+            if page != .home { FloatingDockPanel.release(view) }
             view.removeFromSuperview()
             view.translatesAutoresizingMaskIntoConstraints = false
             switch page {
@@ -277,7 +318,7 @@ final class MainWindow: NSWindow, NSWindowDelegate {
         contentView?.layoutSubtreeIfNeeded()
         let width = max(400, host.bounds.width)
         switch page {
-        case .home: FloatingDockPanel.layoutHome(width: width)
+        case .home: home.setWidth(width)
         case .activity: FloatingDockPanel.activityView.setWidth(width)
         default: break
         }
@@ -339,6 +380,7 @@ final class MainWindow: NSWindow, NSWindowDelegate {
     func debugBack() { backButton.performClick(nil) }
     var debugHost: NSView { host }
     var debugShown: NSView? { shown }
+    var debugHome: MainHomeView { home }
     var debugPlaceholderShown: Bool { !placeholder.isHidden }
     static var debugWindow: MainWindow? { shared }
     func debugPick(_ target: Page) {
