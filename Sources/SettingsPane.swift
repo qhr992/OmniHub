@@ -489,7 +489,7 @@ final class SettingsPane: NSView, DockPage {
             ]),
             section("While playing", "music.note", Tint.pink, [
                 row(label("Dock shows"), PrefChoice(key: "dock.mediaStyle", fallback: 0,
-                                                 options: [(0, "Spinning cover + bars"), (1, "Lyrics"), (2, "Static icon")])),
+                                                 options: [(0, "Spinning cover + bars"), (1, "Song and lyrics"), (2, "Static icon")])),
                 row(label("Player length"), PrefSlider(key: "dock.pillWidth", fallback: 300, range: 84...680)),
                 PrefCheckbox("Now Playing on Home", key: "dock.showMedia", fallback: true),
                 PrefCheckbox("Holiday countdown on Home", key: "dock.showHoliday", fallback: true)

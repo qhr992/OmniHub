@@ -142,6 +142,25 @@ enum DockSelfTest {
         check("music stopping: the pill draws back into the ball",
               between(morph.shrink) >= 4 && zip(morph.shrink, morph.shrink.dropFirst()).allSatisfy { $0 >= $1 }
               && morph.shrink.last == morph.ball, "\(morph.shrink.map { Int($0) })")
+        // ---- the pill's line: the song, then the lyrics, rolling up
+        let style = UserDefaults.standard.object(forKey: "dock.mediaStyle")
+        Prefs.set("dock.mediaStyle", 1)
+        var sung = song
+        sung.title = "Ticker Song"; sung.duration = 200; sung.elapsed = 30; sung.anchor = Date()
+        LyricsProvider.shared.debugSeed(title: sung.title, artist: sung.artist, duration: 200,
+                                        lines: [.init(time: 0, text: "First line"), .init(time: 25, text: "Second line")])
+        MediaObserver.shared.debugInject(sung)
+        _ = FloatingDockPanel.debugBall(page: nil)
+        let start = FloatingDockPanel.debugTicker(after: 0)
+        let lyric = FloatingDockPanel.debugTicker(after: FloatingDockPanel.songShare + 1)
+        let again = FloatingDockPanel.debugTicker(after: FloatingDockPanel.tickerRound + 1)
+        check("pill line: the song, then the lyric, the song again each round (\(start.text) → \(lyric.text) → \(again.text))",
+              start.text == "Ticker Song — Tester" && lyric.text == "Second line" && again.text == start.text)
+        check("pill line: each change rolls in (\(start.rolls) → \(lyric.rolls) → \(again.rolls))",
+              lyric.rolls == start.rolls + 1 && again.rolls == lyric.rolls + 1)
+        FloatingDockPanel.debugHideBall()
+        UserDefaults.standard.set(style, forKey: "dock.mediaStyle")
+
         MediaObserver.shared.debugInject(song)
         let onHome = FloatingDockPanel.debugBall(page: .home)
         let onAgenda = FloatingDockPanel.debugBall(page: .tasks)
