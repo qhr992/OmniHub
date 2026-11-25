@@ -16,10 +16,11 @@ extension SettingsPane {
             ]),
             section("Menu Bar Icon", "menubar.rectangle", Tint.indigo, [
                 row(label("Shows"), PrefChoice(key: StatusIcon.menuBarKey, fallback: 0,
-                                               options: [(0, "Runner"), (1, "Status icon")])),
-                row(PrefCheckbox("Runner flaps", key: "status.animated", fallback: true),
-                    label("faster as"), PrefChoice(key: "status.metric", fallback: 0, options: [(0, "Memory"), (1, "CPU")]),
-                    label("fills up"))
+                                               options: [(0, "Buddy"), (1, "Status icon")])),
+                ConditionalRow(when: { !StatusIcon.inMenuBar },
+                               row(label("Buddy speed"), PrefChoice(key: StatusRunner.speedKey, fallback: StatusRunner.speed,
+                                                                    options: [(0, "Follows memory"), (1, "Follows CPU"), (2, "Still")]))),
+                PrefCheckbox("Network speed beside the icon", key: StatusRunner.netSpeedKey, fallback: false)
             ]),
             section("Dock Ball", "circle.circle", Tint.blue, [
                 row(label("Shows"), PrefChoice(key: StatusIcon.ballKey, fallback: 0,
@@ -36,7 +37,10 @@ extension SettingsPane {
                                               options: StatusIcon.Dots.allCases.map { ($0.rawValue, StatusIcon.title($0)) })),
                 row(label("Bottom as"), PrefChoice(key: StatusIcon.bottomStyleKey, fallback: 0,
                                                    options: [(0, "Dots"), (1, "Arc")]),
-                    PrefCheckbox("Show the figure while plugged in", key: StatusIcon.figureWhilePluggedKey, fallback: false)),
+                    PrefCheckbox("Figure on the ring", key: StatusIcon.ringFigureKey, fallback: true),
+                    ConditionalRow(when: { Prefs.bool(StatusIcon.ringFigureKey, true) },
+                                   PrefCheckbox("Show the figure while plugged in", key: StatusIcon.figureWhilePluggedKey,
+                                                fallback: false))),
                 StatusIconColorsRow(),
                 PrefCheckbox("Also show in the Dock", key: StatusIcon.dockTileKey, fallback: false)
             ])

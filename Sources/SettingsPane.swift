@@ -9,12 +9,22 @@ final class PrefCheckbox: FocusButton {
     init(_ title: String, key: String, fallback: Bool, onChange: (() -> Void)? = nil) {
         self.key = key
         self.onChange = onChange
+        self.fallback = fallback
         super.init(frame: .zero)
         setButtonType(.switch)
         self.title = L(title)
         state = Prefs.bool(key, fallback) ? .on : .off
         target = self
         action = #selector(toggled)
+        // Kept in step when the same setting changes elsewhere (a menu).
+        NotificationCenter.default.addObserver(self, selector: #selector(sync), name: .settingsChanged, object: nil)
+    }
+
+    private let fallback: Bool
+
+    @objc private func sync() {
+        let wanted: NSControl.StateValue = Prefs.bool(key, fallback) ? .on : .off
+        if state != wanted { state = wanted }
     }
 
     @available(*, unavailable)

@@ -65,6 +65,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             exit(0)
         }
 
+        if args.contains(where: { $0.hasSuffix("-selftest") }) { SelfTestPrefs.keep() }
+
         // `--askpass-selftest`: a vault password must only reach an ssh that
         // OmniHub itself started, never a process that just sets the env var.
         if args.contains("--vault-selftest") {
@@ -512,6 +514,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             try? diagnosticsText().write(to: Store.url("diagnostics.txt"), atomically: true, encoding: .utf8)
         case "snapshot":
             snapshotWindows()
+        case "debug/menubar-panel":
+            if let button = statusItem.button { MenuBarPanel.shared.toggle(from: button) }
         case "debug/status-icon":
             // What the menu bar icon is drawn from, and the icon at 10×.
             let icon = StatusIcon.shared
@@ -914,6 +918,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             + "disk=\(SystemStats.bytes(stats.diskUsed))/\(SystemStats.bytes(stats.diskTotal)) "
             + "ips=\(stats.localIPs.map { "\($0.name)=\($0.address)" })")
         out.append(MainWindow.debugState)
+        out.append(MenuBarPanel.shared.debugState)
         out.append("-- pages --")
         out.append(FloatingDockPanel.clipboard.debugState)
         out.append("pins = \(PinnedImageWindow.count) lastDebug = \(lastDebug)")
@@ -985,7 +990,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private func setupStatusItem() {
         statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
         if let button = statusItem.button {
-            // The little runner; it flaps faster as memory / CPU fills up.
+            // The little buddy; it flaps faster as memory / CPU fills up.
             statusRunner = StatusRunner(button: button)
         }
         let menu = NSMenu()
@@ -1002,9 +1007,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         let event = NSApp.currentEvent
         let wantsMenu = event?.type == .rightMouseUp || event?.modifierFlags.contains(.control) == true
         guard wantsMenu else {
-            MainWindow.toggle()
+            if let button = statusItem.button { MenuBarPanel.shared.toggle(from: button) }
             return
         }
+        MenuBarPanel.shared.close()
         // Attached only for this click, so the next left click is ours again.
         statusItem.menu = statusMenu
         statusItem.button?.performClick(nil)
@@ -1017,6 +1023,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         menu.removeAllItems()
         func key(_ action: HotKeyAction) -> String { HotKeyCenter.shared.display(for: action) }
 
+        let dashboard = addItem(menu, "Open Dashboard", "", #selector(openDashboard))
+        dashboard.image = NSImage(systemSymbolName: "rectangle.grid.2x2", accessibilityDescription: nil)
+        menu.addItem(.separator())
         addItem(menu, "Screenshot", key(.snip), #selector(snipNormal))
         addItem(menu, "Scrolling Screenshot", "", #selector(snipLong))
         addItem(menu, "Pin Clipboard Image", key(.pinClipboard), #selector(pinClipboard))
@@ -1032,6 +1041,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         awake.submenu = KeepAwake.shared.menu(target: self, action: #selector(keepAwakePicked(_:)))
         awake.state = KeepAwake.shared.isOn ? .on : .off
         addItem(menu, "Play / Pause", key(.playPause), #selector(togglePlayback))
+        let speed = addItem(menu, "Network Speed in Menu Bar", "", #selector(toggleNetSpeed))
+        speed.state = StatusRunner.showsNetSpeed ? .on : .off
         menu.addItem(.separator())
         // Only while a newer version is out; checking needs no click.
         if let update = UpdateChecker.shared.actionTitle {
@@ -1044,6 +1055,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
         addItem(menu, "Settings…", "", #selector(showSettings))
         addItem(menu, "Quit OmniHub", "", #selector(quit))
+    }
+
+    @objc private func openDashboard() { MainWindow.openDashboard() }
+
+    @objc private func toggleNetSpeed() {
+        UserDefaults.standard.set(!StatusRunner.showsNetSpeed, forKey: StatusRunner.netSpeedKey)
+        NotificationCenter.default.post(name: .settingsChanged, object: nil)
     }
 
     @discardableResult

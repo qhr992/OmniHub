@@ -14,7 +14,9 @@ A menu bar suite for macOS. Screenshots, pinned images, clipboard history, Now P
 
 **Floating dock.** A small ball that stays where you drop it. Hover over it to open a card next to it; the card grows out of the ball and folds back when the pointer leaves. While media plays, the ball stretches into a pill with the spinning cover and a level meter. The card keeps Home, Terminal, Shelf and Clipboard; its Settings icon opens Settings in the main window. A page opened with its shortcut stays in front until you close it; once you switch to another page, the card folds away when you click elsewhere. In the card, Tab / ⇧Tab move between fields and settings; Space or Return works the focused control.
 
-**Main window.** A left click on the menu bar icon (or a click on the Dock icon) opens an ordinary window with every page down the left: Home, Activity, Agenda, Terminal, Shelf, Clipboard and Settings; another left click closes it. A right click on the menu bar icon still shows its menu. A page is shown in one place at a time: opening it in the window takes it from the card, and it comes back when the card folds. Settings lists its categories down the left, with the chosen one on the right.
+**Menu bar.** A left click on the menu bar icon drops down a panel: what is playing on top, then CPU, memory, GPU, disk, battery, network speed and Keep Awake. A right click shows the menu, which starts with **Open Dashboard**.
+
+**Main window (Dashboard).** Open Dashboard (from the panel, the menu or the Dock icon) opens an ordinary window with every page down the left: Home, Activity, Agenda, Terminal, Shelf, Clipboard and Settings. A page is shown in one place at a time: opening it in the window takes it from the card, and it comes back when the card folds. Settings lists its categories down the left, with the chosen one on the right.
 
 **Screenshots.**
 - Capture with window detection, a magnifier and annotations with undo and redo: frames (rectangle or ellipse), arrows, pen, text, and a mosaic brush in three sizes to hide sensitive content. The chosen tool's options (shape, colour, brush size) open in a strip under the toolbar.
@@ -58,7 +60,7 @@ A menu bar suite for macOS. Screenshots, pinned images, clipboard history, Now P
 
 **Appearance.**
 - The card's background opacity can be lowered to show the blurred desktop behind it.
-- The menu bar can show the runner or the status icon; the dock ball can show the logo or the status icon; the status icon can also be shown in the Dock.
+- The menu bar can show the buddy (still, or flapping faster as memory or CPU fills up) or the status icon, optionally with the network speed to its right (upload above, download below); the dock ball can show the logo or the status icon; the status icon can also be shown in the Dock.
 - The status icon is a live icon laid out like the iPhone "Duo" status icon,; OmniHub draws it with its own code. An open ring with a head at the top, a glyph in the middle and dots (or an arc) on the same circle at the bottom, so the whole reads as one round outline, each show what you pick (battery, CPU, memory, disk, Wi-Fi, network, volume).
 - Battery on the ring: the charge as a figure on battery, a bolt while charging, a plug when plugged in and not charging or full (or the figure, if you prefer). The colour follows the charge: green from 80 %, shading through yellow and orange to red at 20 % or less, plugged in or not; the bolt and plug are green, the figure turns red at 10 % or less and yellow in Low Power Mode. A Mac without a battery shows the plug. A small amber coffee cup next to the figure on top (in the top right corner when no ring is shown) means Keep Awake is on.
 - Colours: themes (Automatic, Aurora, Sunset, Mint, Sakura, Violet, Paper) or your own colour for the ring, middle, dots and background.

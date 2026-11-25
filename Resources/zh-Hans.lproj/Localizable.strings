@@ -256,7 +256,6 @@
 "Startup animation" = "启动动画";
 "Sound" = "声音";
 "Menu Bar Icon" = "菜单栏图标";
-"Runner" = "奔跑小人";
 "Permissions" = "权限";
 "Needed for screenshots and pins. Restart OmniHub after granting." = "截图和贴图需要。授权后请重启 OmniHub。";
 "Optional: lets players that take no commands from other apps (e.g. NetEase) switch play mode and like through their menus." = "可选：对不接受外部命令的播放器（如网易云音乐），通过它的菜单切换播放模式和喜欢。";
@@ -513,9 +512,6 @@
 "Background" = "背景";
 "Opacity" = "不透明度";
 "Shows" = "显示";
-"Runner flaps" = "小人随";
-"faster as" = "";
-"fills up" = "占用升高而加快";
 "Dock Ball" = "悬浮球";
 "Logo" = "Logo";
 "Status Icon" = "状态图标";
@@ -557,3 +553,12 @@
 "Custom" = "自定义";
 "Colours" = "配色";
 "Battery coloured by charge" = "电池按电量着色";
+"Open Dashboard" = "进入 Dashboard";
+"Buddy" = "小伙伴";
+"Buddy speed" = "小伙伴速度";
+"Figure on the ring" = "外环显示数字";
+"Follows CPU" = "随 CPU";
+"Follows memory" = "随内存";
+"Network speed beside the icon" = "在图标右侧显示网速";
+"Still" = "不动";
+"Network Speed in Menu Bar" = "菜单栏显示网速";

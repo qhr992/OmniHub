@@ -23,6 +23,7 @@ SOURCES=(
   Sources/SettingsPane.swift
   Sources/SidebarList.swift
   Sources/MainWindow.swift
+  Sources/MenuBarPanel.swift
   Sources/MainWindowMotion.swift
   Sources/MainHome.swift
   Sources/MainHomeTiles.swift

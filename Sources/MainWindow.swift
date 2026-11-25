@@ -59,6 +59,11 @@ final class MainWindow: NSWindow, NSWindowDelegate {
             window.close()
             return
         }
+        openDashboard()
+    }
+
+    /// The window on the page it showed last.
+    static func openDashboard() {
         open(Page(rawValue: Prefs.string(pageKey)) ?? .home)
     }
 

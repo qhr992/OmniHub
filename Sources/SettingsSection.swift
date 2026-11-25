@@ -153,3 +153,26 @@ final class StatusIconPreview: NSStackView {
         dock.image = icon.image(size: 120, foreground: .white, plate: .square)
     }
 }
+
+/// Shows `content` only while `when` holds, re-checked on every settings
+/// change (a setting that only applies to one choice of another).
+final class ConditionalRow: NSStackView {
+    private let when: () -> Bool
+
+    init(when: @escaping () -> Bool, _ content: NSView) {
+        self.when = when
+        super.init(frame: .zero)
+        orientation = .horizontal
+        addArrangedSubview(content)
+        isHidden = !when()
+        NotificationCenter.default.addObserver(self, selector: #selector(sync), name: .settingsChanged, object: nil)
+    }
+
+    @available(*, unavailable)
+    required init?(coder: NSCoder) { fatalError() }
+
+    @objc private func sync() {
+        let hidden = !when()
+        if isHidden != hidden { isHidden = hidden }
+    }
+}

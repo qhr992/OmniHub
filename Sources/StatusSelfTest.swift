@@ -33,6 +33,7 @@ enum StatusSelfTest {
         network()
         topApps()
         icon(pictures: pictures)
+        menuBar(pictures: pictures)
         card(pictures: pictures)
         // Put back before exit (which skips `defer`).
         for (key, value) in zip(keys, saved) { UserDefaults.standard.set(value, forKey: key) }
@@ -146,15 +147,44 @@ enum StatusSelfTest {
 
     // MARK: Status icon
 
-    private static func pixels(_ image: NSImage, size: Int) -> NSBitmapImageRep? {
-        guard let rep = NSBitmapImageRep(bitmapDataPlanes: nil, pixelsWide: size, pixelsHigh: size, bitsPerSample: 8,
+    private static func pixels(_ image: NSImage, size: Int, height: Int? = nil) -> NSBitmapImageRep? {
+        let high = height ?? size
+        guard let rep = NSBitmapImageRep(bitmapDataPlanes: nil, pixelsWide: size, pixelsHigh: high, bitsPerSample: 8,
                                          samplesPerPixel: 4, hasAlpha: true, isPlanar: false,
                                          colorSpaceName: .deviceRGB, bytesPerRow: 0, bitsPerPixel: 0) else { return nil }
         NSGraphicsContext.saveGraphicsState()
         NSGraphicsContext.current = NSGraphicsContext(bitmapImageRep: rep)
-        image.draw(in: NSRect(x: 0, y: 0, width: size, height: size))
+        image.draw(in: NSRect(x: 0, y: 0, width: size, height: high))
         NSGraphicsContext.restoreGraphicsState()
         return rep
+    }
+
+    /// Draws into a fresh bitmap of `size` points at `scale`× and saves it as a PNG.
+    private static func savePNG(_ size: NSSize, scale: CGFloat, to url: URL, draw: (NSRect) -> Void) {
+        guard let rep = NSBitmapImageRep(bitmapDataPlanes: nil, pixelsWide: Int(size.width * scale),
+                                         pixelsHigh: Int(size.height * scale), bitsPerSample: 8, samplesPerPixel: 4,
+                                         hasAlpha: true, isPlanar: false, colorSpaceName: .deviceRGB,
+                                         bytesPerRow: 0, bitsPerPixel: 0),
+              let context = NSGraphicsContext(bitmapImageRep: rep) else { return }
+        NSGraphicsContext.saveGraphicsState()
+        NSGraphicsContext.current = context
+        let rect = NSRect(x: 0, y: 0, width: rep.pixelsWide, height: rep.pixelsHigh)
+        NSColor(srgbRed: 0.15, green: 0.15, blue: 0.17, alpha: 1).setFill()
+        rect.fill()
+        draw(rect)
+        NSGraphicsContext.restoreGraphicsState()
+        try? rep.representation(using: .png, properties: [:])?.write(to: url)
+    }
+
+    /// `image` at `scale`× on a dark menu bar (a template drawn white).
+    private static func write(_ image: NSImage, size scale: CGFloat, to url: URL) {
+        let shown = image.isTemplate ? NSImage(size: image.size, flipped: false) { rect in
+            image.draw(in: rect)
+            NSColor.white.set()
+            rect.fill(using: .sourceAtop)
+            return true
+        } : image
+        savePNG(image.size, scale: scale, to: url) { shown.draw(in: $0) }
     }
 
     /// Pixels close to `color` (by hue, saturated).
@@ -203,6 +233,9 @@ enum StatusSelfTest {
         }
         check("every combination of ring, middle and dots draws something", blank.isEmpty, "\(blank)")
 
+        // The charge colours are what is tested, whatever this Mac's switch says.
+        Prefs.set(StatusIcon.Palette.semanticKey, true)
+        Prefs.set(StatusIcon.Palette.themeKey, StatusIcon.Theme.automatic.rawValue)
         let ringOnly = StatusIcon.Config(ring: .battery, center: .none, dots: .none)
         func batteryPixels(_ battery: BatteryInfo, _ tint: NSColor) -> Int {
             var state = readings
@@ -211,24 +244,30 @@ enum StatusSelfTest {
             return pixels(image, size: 80).map { count($0, near: tint) } ?? 0
         }
         check("battery ring: red at 12 %", batteryPixels(.sample(percent: 12), StatusIcon.Tint.low) > 20)
-        check("battery ring: green at 92 %, charging or not",
-              batteryPixels(.sample(percent: 92), StatusIcon.Tint.charging) > 20
+        check("battery ring: white at 92 % on battery, green only while charging",
+              batteryPixels(.sample(percent: 92), .white) > 20 && batteryPixels(.sample(percent: 92), StatusIcon.Tint.charging) == 0
                 && batteryPixels(.sample(percent: 92, charging: true, pluggedIn: true), StatusIcon.Tint.charging) > 20)
-        check("battery ring: red while charging at 15 %",
-              batteryPixels(.sample(percent: 15, charging: true, pluggedIn: true), StatusIcon.Tint.low) > 20)
+        check("battery ring: green while charging at 15 %, white when plugged in and not charging",
+              batteryPixels(.sample(percent: 15, charging: true, pluggedIn: true), StatusIcon.Tint.charging) > 20
+                && batteryPixels(.sample(percent: 100, pluggedIn: true), StatusIcon.Tint.charging) == 0)
         check("battery ring: neither red nor green at 50 %",
               batteryPixels(.sample(percent: 50), StatusIcon.Tint.low) == 0
                 && batteryPixels(.sample(percent: 50), StatusIcon.Tint.charging) == 0)
-        // The charge colour moves steadily from red to green.
-        let hues = stride(from: 0, through: 100, by: 5).map { percent -> CGFloat in
-            let color = StatusIcon.chargeTint(percent).usingColorSpace(.sRGB) ?? .black
-            return color.hueComponent
+        // Draining: red, through orange to yellow, then the default colour.
+        let hues = stride(from: 0, through: 75, by: 5).map { percent -> CGFloat in
+            (StatusIcon.chargeTint(percent)?.usingColorSpace(.sRGB) ?? .black).hueComponent
         }
-        check("charge colour: red to 20 %, green from 80 %, hue rising in between",
+        check("charge colour: red to 20 %, hue rising to yellow, default from 80 %, green when charging",
               StatusIcon.chargeTint(5) == StatusIcon.Tint.low && StatusIcon.chargeTint(20) == StatusIcon.Tint.low
-                && StatusIcon.chargeTint(80) == StatusIcon.Tint.charging && StatusIcon.chargeTint(100) == StatusIcon.Tint.charging
+                && StatusIcon.chargeTint(80) == nil && StatusIcon.chargeTint(100) == nil
+                && StatusIcon.chargeTint(30, charging: true) == StatusIcon.Tint.charging
                 && zip(hues, hues.dropFirst()).allSatisfy { $0.1 >= $0.0 - 0.001 },
               hues.map { String(format: "%.2f", $0) }.joined(separator: " "))
+        // Ring only: no figure in the top gap.
+        Prefs.set(StatusIcon.ringFigureKey, false)
+        let plain = StatusIcon.debugHead(.sample(percent: 64))
+        Prefs.set(StatusIcon.ringFigureKey, nil)
+        check("ring only: no figure on top when turned off", plain.text == nil && plain.symbol == nil)
         // Volume 50% lights two of the four dots, at menu bar size too.
         var half = readings
         half.volume = 0.5
@@ -293,12 +332,12 @@ enum StatusSelfTest {
         ]
         let wrong = cases.filter { head($0.1) != $0.2 }.map { "\($0.0): \(head($0.1))" }
         check("head: figure on battery, bolt charging, plug on the adapter or without a battery", wrong.isEmpty, "\(wrong)")
-        check("head: the figure turns red at 10 % or less, yellow in Low Power Mode, bolt and plug green",
+        check("head: the figure turns red at 10 % or less, yellow in Low Power Mode, bolt green, plug default",
               StatusIcon.debugHead(.sample(percent: 8)).color == StatusIcon.Tint.low
                 && StatusIcon.debugHead(.sample(percent: 15)).color != StatusIcon.Tint.low
                 && StatusIcon.debugHead(.sample(percent: 55, lowPowerMode: true)).color == StatusIcon.Tint.lowPower
                 && StatusIcon.debugHead(.sample(percent: 60, charging: true, pluggedIn: true)).color == StatusIcon.Tint.charging
-                && StatusIcon.debugHead(.sample(percent: 100, pluggedIn: true)).color == StatusIcon.Tint.charging)
+                && StatusIcon.debugHead(.sample(percent: 100, pluggedIn: true)).color != StatusIcon.Tint.charging)
         Prefs.set(StatusIcon.figureWhilePluggedKey, true)
         let plugged = (head(.sample(percent: 80, pluggedIn: true)), head(.sample(percent: 60, charging: true, pluggedIn: true)))
         Prefs.set(StatusIcon.figureWhilePluggedKey, nil)
@@ -399,6 +438,54 @@ enum StatusSelfTest {
         NotificationCenter.default.post(name: .settingsChanged, object: nil)
         check("dock ball: status icon when picked, logo again after",
               onBall && !FloatingDockPanel.debugBallShowsStatus)
+    }
+
+    // MARK: Menu bar
+
+    private static func menuBar(pictures: URL?) {
+        let icon = StatusRunner.makeFrames()[0]
+        let wide = StatusRunner.compose(icon, up: "1.2 MB/s", down: "88 KB/s")
+        let other = StatusRunner.compose(icon, up: "0 B/s", down: "888.8 MB/s")
+        check("network speed: a fixed-width column right of the icon (\(icon.size.width) → \(wide.size.width))",
+              wide.size.width > icon.size.width + 40 && wide.size.width == other.size.width
+                && wide.isTemplate && wide.size.height >= icon.size.height)
+        let top = pixelRows(wide).filter { $0 >= Int(wide.size.height) }.count
+        let bottom = pixelRows(wide).filter { $0 < Int(wide.size.height) }.count
+        check("network speed: upload above, download below (ink \(top) / \(bottom))", top > 10 && bottom > 10)
+        if let pictures { write(wide, size: 6, to: pictures.appendingPathComponent("menubar-speed.png")) }
+
+        Prefs.set(StatusRunner.speedKey, nil)
+        Prefs.set("status.animated", false)
+        let still = StatusRunner.speed
+        Prefs.set("status.animated", true)
+        Prefs.set("status.metric", 1)
+        let cpu = StatusRunner.speed
+        Prefs.set(StatusRunner.speedKey, 0)
+        check("buddy speed: from the older switches until chosen (\(still), \(cpu), \(StatusRunner.speed))",
+              still == 2 && cpu == 1 && StatusRunner.speed == 0)
+
+        SystemStats.shared.loadOnce {}
+        let panel = MenuBarPanel.debugContent()
+        wait(3) { panel.debugText.contains("CPU=") && !panel.debugText.contains("CPU=–") }
+        let text = panel.debugText
+        check("menu bar panel: player, then CPU, memory, disk, battery and network: \(text)",
+              text.hasPrefix("playing=") && text.contains("CPU=") && text.contains("Memory=") && text.contains("Disk=")
+                && text.contains("net=↑") && (text.contains("Battery=") || BatteryInfo.read() == nil))
+        check("menu bar panel: \(MenuBarPanelView.width) wide, \(panel.fittingSize.height) high",
+              panel.fittingSize.height > 250 && panel.fittingSize.height < 700)
+        MenuBarPanel.debugDidHide()
+    }
+
+    /// The (2×) pixel rows holding ink, bottom row 0.
+    private static func pixelRows(_ image: NSImage) -> [Int] {
+        guard let rep = pixels(image, size: Int(image.size.width * 2), height: Int(image.size.height * 2)) else { return [] }
+        var rows: [Int] = []
+        for y in 0..<rep.pixelsHigh {
+            for x in Int(image.size.width * 2 * 0.45)..<rep.pixelsWide where (rep.colorAt(x: x, y: y)?.alphaComponent ?? 0) > 0.4 {
+                rows.append(rep.pixelsHigh - 1 - y)
+            }
+        }
+        return rows
     }
 
     // MARK: Card

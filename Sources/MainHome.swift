@@ -335,7 +335,7 @@ final class SystemTile: HomeTile {
         disk.value = stats.diskTotal > 0 ? Double(stats.diskUsed) / Double(stats.diskTotal) : nil
         let info = stats.battery ?? BatteryInfo.read()
         battery.value = info.map { Double($0.percent) / 100 }
-        if let info { battery.tint = StatusIcon.chargeTint(info.percent) }
+        if let info { battery.tint = StatusIcon.batteryTint(info) ?? .white }
         battery.detail = info.map { $0.charging ? L("Charging") : L("Battery") } ?? L("Battery")
         battery.isHidden = info == nil
         network.stringValue = "↓ \(SystemStats.rate(stats.netIn))   ↑ \(SystemStats.rate(stats.netOut))"

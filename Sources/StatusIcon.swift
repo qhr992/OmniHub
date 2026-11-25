@@ -232,6 +232,8 @@ final class StatusIcon {
     static let bottomStyleKey = "statusIcon.bottomStyle"
     /// Show the figure, not the plug / bolt, while on the adapter.
     static let figureWhilePluggedKey = "statusIcon.figureWhilePlugged"
+    /// The figure (or sign) in the ring's top gap; off: a plain full ring.
+    static let ringFigureKey = "statusIcon.ringFigure"
 
     /// Where the ring sits in `rect`. With a head, the ring is a little
     /// smaller and lower, so the figure on its top stays inside.
@@ -390,6 +392,7 @@ final class StatusIcon {
         func figure(_ value: Double?) -> Head {
             Head(text: value.map { "\(Int(($0 * 100).rounded()))" } ?? "–", symbol: nil, color: colors.center)
         }
+        guard Prefs.bool(ringFigureKey, true) else { return nil }
         switch ring {
         case .none: return nil
         case .cpu: return figure(r.cpu)
@@ -400,16 +403,15 @@ final class StatusIcon {
             guard let battery = r.battery else { return Head(text: nil, symbol: "powerplug.fill", color: colors.center) }
             let text = "\(battery.percent)"
             let figure = Prefs.bool(figureWhilePluggedKey, false)
-            // The sign takes the state's colour; the figure stays neutral
-            // unless it is a warning (red when very low, yellow in Low
-            // Power Mode).
+            // Only charging is green; the figure stays neutral unless it is
+            // a warning (red when very low, yellow in Low Power Mode).
             func tinted(_ color: NSColor) -> NSColor { colors.semantic ? color : colors.center }
             switch battery.state {
             case .charging:
                 return Head(text: figure ? text : nil, symbol: "bolt.fill", color: tinted(Tint.charging))
             case .full, .held:
                 return figure ? Head(text: text, symbol: nil, color: colors.center)
-                    : Head(text: nil, symbol: "powerplug.fill", color: tinted(Tint.charging))
+                    : Head(text: nil, symbol: "powerplug.fill", color: colors.center)
             case .critical: return Head(text: text, symbol: nil, color: tinted(Tint.low))
             case .lowPower: return Head(text: text, symbol: nil, color: tinted(Tint.lowPower))
             case .low, .normal: return Head(text: text, symbol: nil, color: colors.center)
@@ -462,20 +464,22 @@ final class StatusIcon {
         }
     }
 
-    /// Colour stops of the charge: red up to 20 %, through orange and
-    /// yellow, green from 80 %.
+    /// Colour stops of a draining battery: red up to 20 %, through orange
+    /// to yellow; from `neutralFrom` it takes the default colour.
     static let chargeStops: [(percent: Double, color: NSColor)] = [
         (20, Tint.low),
-        (40, NSColor(srgbRed: 1.0, green: 0.58, blue: 0.20, alpha: 1)),
-        (60, NSColor(srgbRed: 1.0, green: 0.82, blue: 0.22, alpha: 1)),
-        (80, Tint.charging)
+        (45, NSColor(srgbRed: 1.0, green: 0.58, blue: 0.20, alpha: 1)),
+        (70, NSColor(srgbRed: 1.0, green: 0.84, blue: 0.24, alpha: 1))
     ]
+    static let neutralFrom = 80
 
-    /// The colour of a charge, blended between the stops, so it shifts as
-    /// the battery fills or drains.
-    static func chargeTint(_ percent: Int) -> NSColor {
+    /// The battery's colour: green while charging; otherwise blended
+    /// between the stops as it drains, and nil (the default colour) from 80 %.
+    static func chargeTint(_ percent: Int, charging: Bool = false) -> NSColor? {
+        if charging { return Tint.charging }
+        if percent >= neutralFrom { return nil }
         let value = Double(percent)
-        guard let first = chargeStops.first, let last = chargeStops.last else { return Tint.charging }
+        guard let first = chargeStops.first, let last = chargeStops.last else { return nil }
         if value <= first.percent { return first.color }
         if value >= last.percent { return last.color }
         for (lower, upper) in zip(chargeStops, chargeStops.dropFirst()) where value <= upper.percent {
@@ -486,13 +490,12 @@ final class StatusIcon {
         return last.color
     }
 
-    /// The battery's colour: by charge, whatever the state (the head shows
-    /// charging, the adapter and Low Power Mode).
-    static func batteryTint(_ battery: BatteryInfo) -> NSColor { chargeTint(battery.percent) }
+    static func batteryTint(_ battery: BatteryInfo) -> NSColor? { chargeTint(battery.percent, charging: battery.charging) }
 
-    /// The battery's colour: by charge when that is on, else the part's own.
+    /// The battery's colour: by charge when that is on (the part's own
+    /// colour where the charge has none), else the part's own.
     private static func battery(_ battery: BatteryInfo, own: NSColor?, colors: Colors) -> NSColor {
-        colors.semantic ? batteryTint(battery) : own ?? colors.neutral
+        (colors.semantic ? batteryTint(battery) : nil) ?? own ?? colors.neutral
     }
 
     private static func ringLevel(_ ring: Ring, _ r: Readings, colors: Colors) -> (Double, NSColor)? {

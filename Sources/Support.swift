@@ -113,3 +113,21 @@ enum AppRelaunch {
         NSApp.terminate(nil)
     }
 }
+
+/// Self-tests share the app's preferences: whatever they switch is put back
+/// as the user had it when the test process exits.
+enum SelfTestPrefs {
+    private static var saved: [String: Any]?
+
+    static func keep() {
+        guard saved == nil, let id = Bundle.main.bundleIdentifier else { return }
+        saved = UserDefaults.standard.persistentDomain(forName: id) ?? [:]
+        atexit { SelfTestPrefs.restore() }
+    }
+
+    private static func restore() {
+        guard let saved, let id = Bundle.main.bundleIdentifier else { return }
+        UserDefaults.standard.setPersistentDomain(saved, forName: id)
+        UserDefaults.standard.synchronize()
+    }
+}
