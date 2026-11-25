@@ -187,6 +187,15 @@ enum StatusSelfTest {
         savePNG(image.size, scale: scale, to: url) { shown.draw(in: $0) }
     }
 
+    /// Pixels drawn at all (mostly opaque).
+    private static func ink(_ rep: NSBitmapImageRep) -> Int {
+        var found = 0
+        for x in 0..<rep.pixelsWide {
+            for y in 0..<rep.pixelsHigh where (rep.colorAt(x: x, y: y)?.alphaComponent ?? 0) > 0.6 { found += 1 }
+        }
+        return found
+    }
+
     /// Pixels close to `color` (by hue, saturated).
     private static func count(_ rep: NSBitmapImageRep, near color: NSColor) -> Int {
         guard let target = color.usingColorSpace(.deviceRGB) else { return 0 }
@@ -224,8 +233,8 @@ enum StatusSelfTest {
                 for dots in StatusIcon.Dots.allCases where ring != .none || center != .none || dots != .none {
                     let config = StatusIcon.Config(ring: ring, center: center, dots: dots)
                     let image = StatusIcon.image(size: 18, readings: readings, config: config, foreground: .white)
-                    if let rep = pixels(image, size: 36), count(rep, near: .white) + count(rep, near: StatusIcon.Tint.cpu)
-                        + count(rep, near: StatusIcon.Tint.memory) + count(rep, near: StatusIcon.Tint.disk) == 0 {
+                    // Any colour counts: the battery's follows the charge and the settings.
+                    if let rep = pixels(image, size: 36), ink(rep) == 0 {
                         blank.append("\(ring)/\(center)/\(dots)")
                     }
                 }
@@ -466,7 +475,11 @@ enum StatusSelfTest {
 
         SystemStats.shared.loadOnce {}
         let panel = MenuBarPanel.debugContent()
-        wait(5) { panel.debugText.contains("samples=2") || panel.debugText.contains("samples=3") }
+        // CPU needs two readings to show a figure.
+        wait(8) {
+            let text = panel.debugText
+            return !text.contains("cpu=—") && !text.contains("samples=0") && !text.contains("samples=1 ")
+        }
         let text = panel.debugText
         check("menu bar panel: player, then CPU, memory, GPU, disk, network (and battery) with charts: \(text)",
               text.hasPrefix("playing=") && text.contains("cpu=") && !text.contains("cpu=—") && text.contains("memory=")

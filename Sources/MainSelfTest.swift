@@ -29,6 +29,7 @@ enum MainSelfTest {
         settings(pictures: pictures)
         transferButton()
         screenPlacement()
+        help()
 
         for (key, value) in saved { Prefs.set(key, value) }
         print(failures == 0 ? "RESULT: all passed" : "RESULT: \(failures) failed")
@@ -192,6 +193,58 @@ enum MainSelfTest {
         pane.select(tab: 6)
         check("a topic opens at its top", pane.debugScrollOffset == 0, "offset \(pane.debugScrollOffset)")
         pane.showOverview()
+    }
+
+    /// Help: the "?" at the bottom left opens it over the page; the search
+    /// narrows it and marks the words; Back or a page leaves it.
+    private static func help() {
+        let english = HelpContent.english, chinese = HelpContent.chinese
+        check("help: \(english.count) sections, \(english.reduce(0) { $0 + $1.entries.count }) topics, the same in Chinese",
+              english.count >= 10 && english.count == chinese.count
+                && zip(english, chinese).allSatisfy { $0.entries.count == $1.entries.count && $0.symbol == $1.symbol })
+        let window = MainWindow.debugOpen(.activity)
+        let button = window.debugHelpButtonFrame
+        check("help: the ? sits at the bottom left (\(Int(button.minX)), \(Int(button.minY)))",
+              button.minX < 40 && button.minY < 40 && button.width > 10)
+        window.debugHelpButton()
+        guard let help = window.debugHelp else {
+            check("help opens", false)
+            return
+        }
+        window.contentView?.layoutSubtreeIfNeeded()
+        let all = help.debugShown
+        check("help opens over the page, titled Help, with Back (\(all.headings.count) topics)",
+              window.debugTitle == "Help" && window.debugBackShown && window.page == .activity
+                && all.headings.count == english.reduce(0) { $0 + $1.entries.count } && all.marks == 0)
+        help.debugSearch("lyrics")
+        let lyrics = help.debugShown
+        let texts = english.flatMap(\.entries).filter { lyrics.headings.contains($0.heading) }
+        check("help search: only topics mentioning “lyrics”, marked (\(lyrics.headings))",
+              !lyrics.headings.isEmpty && lyrics.headings.count < all.headings.count && lyrics.marks >= lyrics.headings.count
+                && texts.allSatisfy { ($0.heading + $0.body).lowercased().contains("lyrics") })
+        help.debugSearch("terminal vault")
+        let both = help.debugShown.headings
+        help.debugSearch("terminal")
+        let terminal = help.debugShown.headings
+        let terminalSection = english.first { $0.title == "Terminal" }?.entries.map(\.heading) ?? []
+        check("help search: every word must appear (\(both)); a section title shows it whole",
+              both == ["Vault"] && terminalSection.allSatisfy(terminal.contains))
+        help.debugSearch("qqzzxx")
+        let none = help.debugShown
+        check("help search: nothing found says so", none.headings.isEmpty && none.empty)
+        window.debugBack()
+        check("Back leaves help: the page and its title again",
+              window.debugHelp == nil && window.debugTitle == L("Activity") && !window.debugBackShown)
+        window.debugHelpButton()
+        window.debugPick(.terminal)
+        check("picking a page leaves help", window.debugHelp == nil && window.page == .terminal)
+        _ = MainWindow.debugOpen(.settings)
+        FloatingDockPanel.settings.select(tab: 2)
+        window.debugHelpButton()
+        window.debugBack()
+        check("help over a Settings topic: Back returns to the topic (\(window.debugTitle))",
+              window.debugTitle == L("Screenshot") && window.debugBackShown)
+        FloatingDockPanel.settings.showOverview()
     }
 
     /// The window comes to the screen in use, its size kept but never

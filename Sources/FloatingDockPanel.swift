@@ -155,13 +155,6 @@ final class FloatingDockPanel: NSPanel, EscDismissable {
     private var dragging = false
     private var reopenAfterDrag = false
     private var lastLyric = ""
-    /// The pill's line alternates between the song and its lyrics: this
-    /// song, and when it started showing.
-    private var tickerSong = ""
-    private var tickerStart = Date()
-    /// One round: the song for `songShare` seconds, then the lyrics.
-    static let tickerRound: TimeInterval = 16
-    static let songShare: TimeInterval = 4
     /// Space / ⌘← / ⌘→ … while the pointer rests on the home page.
     private var homeKeys: [HotKey] = []
 
@@ -941,23 +934,22 @@ final class FloatingDockPanel: NSPanel, EscDismissable {
         let position = media.position()
 
         // Lyrics are only looked up when something shows them.
-        var line = ""
+        var line = "", sung = ""
         if mediaStyle == 1, let position,
            let lines = LyricsProvider.shared.lines(title: media.title, artist: media.artist,
                                                          duration: media.duration) {
             line = LyricsProvider.current(in: lines, at: position) ?? ""
+            // Through a blank line (a break in the singing) the pill keeps the last one sung.
+            sung = LyricsProvider.current(in: lines.filter { !$0.text.trimmingCharacters(in: .whitespaces).isEmpty },
+                                          at: position) ?? ""
         }
+        // The lyric being sung stays until the next one; the song shows only
+        // while there is no line (before the first one, or no lyrics).
         let song = [media.title, media.artist].filter { !$0.isEmpty }.joined(separator: " — ")
-        if song != tickerSong {
-            tickerSong = song
-            tickerStart = Date()
-        }
-        // The song first, then the lyrics line by line, the song again each round.
-        let showsSong = line.isEmpty
-            || Date().timeIntervalSince(tickerStart).truncatingRemainder(dividingBy: Self.tickerRound) < Self.songShare
-        let pillText = showsSong ? song : line
+        let pillText = sung.isEmpty ? song : sung
         if pillText != compactLabel.text {
-            if force || compactLabel.isHidden { compactLabel.text = pillText } else { compactLabel.roll(to: pillText) }
+            // Rolls whenever it is seen, even on a forced refresh (a new position from the player).
+            if compactLabel.isHidden { compactLabel.text = pillText } else { compactLabel.roll(to: pillText) }
         }
         if line != lastLyric || force {
             lastLyric = line
@@ -1498,12 +1490,10 @@ final class FloatingDockPanel: NSPanel, EscDismissable {
 
     /// Test hook: with music playing, the ball's width and whether the
     /// pill's bars show, with `page` open (nil = card closed).
-    /// Test hook: the pill's line after the song has been showing for
-    /// `seconds` (the ticker clock is moved back), and how many lines rolled.
-    static func debugTicker(after seconds: TimeInterval) -> (text: String, rolls: Int) {
+    /// Test hook: the pill's line now, and how many lines have rolled in.
+    static func debugTicker() -> (text: String, rolls: Int) {
         let panel = instance()
         if !panel.isVisible { panel.orderFrontRegardless() }
-        panel.tickerStart = Date().addingTimeInterval(-seconds)
         panel.tickPlayback()
         return (panel.compactLabel.text, panel.compactLabel.rolls)
     }

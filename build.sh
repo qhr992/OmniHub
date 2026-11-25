@@ -24,6 +24,8 @@ SOURCES=(
   Sources/SettingsOverview.swift
   Sources/SidebarList.swift
   Sources/MainWindow.swift
+  Sources/HelpContent.swift
+  Sources/HelpView.swift
   Sources/MenuBarPanel.swift
   Sources/MainWindowMotion.swift
   Sources/MainHome.swift

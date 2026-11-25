@@ -12,24 +12,6 @@ final class MenuBarPanel: NSObject, NSPopoverDelegate {
 
     var isShown: Bool { popover.isShown }
 
-    /// What the popover hangs from: a clear sliver laid over the icon that
-    /// was clicked. Once we activate, the status item's button can move to
-    /// another display's menu bar (the one with our key window), which put
-    /// the panel on the wrong screen over full-screen apps. The sliver stays
-    /// where the click was, in every Space.
-    private lazy var anchor: NSPanel = {
-        let panel = NSPanel(contentRect: NSRect(x: 0, y: 0, width: 1, height: 1),
-                            styleMask: [.borderless, .nonactivatingPanel], backing: .buffered, defer: true)
-        panel.isOpaque = false
-        panel.backgroundColor = .clear
-        panel.hasShadow = false
-        panel.ignoresMouseEvents = true
-        panel.isReleasedWhenClosed = false
-        panel.level = .statusBar
-        panel.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary, .stationary, .ignoresCycle]
-        return panel
-    }()
-
     func toggle(from button: NSStatusBarButton) {
         if popover.isShown {
             popover.performClose(nil)
@@ -44,26 +26,19 @@ final class MenuBarPanel: NSObject, NSPopoverDelegate {
             popover.appearance = NSAppearance(named: .darkAqua)
             popover.delegate = self
         }
-        guard let window = button.window, let host = anchor.contentView else { return }
-        // Read before activating: activating is what moves the button away.
-        anchor.setFrame(window.convertToScreen(button.convert(button.bounds, to: nil)), display: false)
-        anchor.orderFrontRegardless()
         content.willShow()
         popover.contentSize = content.fittingSize
         NSApp.activate(ignoringOtherApps: true)
-        popover.show(relativeTo: host.bounds, of: host, preferredEdge: .minY)
+        popover.show(relativeTo: button.bounds, of: button, preferredEdge: .minY)
     }
 
     func close() { popover.performClose(nil) }
 
     var debugState: String {
-        "menubarPanel shown=\(popover.isShown) anchor=\(NSStringFromRect(anchor.frame)) frame=\(content.window.map { NSStringFromRect($0.frame) } ?? "-") screen=\(content.window?.screen.map { NSStringFromRect($0.frame) } ?? "-") \(popover.isShown ? content.debugText : "")"
+        "menubarPanel shown=\(popover.isShown) frame=\(content.window.map { NSStringFromRect($0.frame) } ?? "-") screen=\(content.window?.screen.map { NSStringFromRect($0.frame) } ?? "-") \(popover.isShown ? content.debugText : "")"
     }
 
-    func popoverDidClose(_ notification: Notification) {
-        anchor.orderOut(nil)
-        content.didHide()
-    }
+    func popoverDidClose(_ notification: Notification) { content.didHide() }
 
     /// Test hook: the panel laid out (and refreshed) without showing it.
     static func debugContent() -> MenuBarPanelView {

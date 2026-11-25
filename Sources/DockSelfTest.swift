@@ -142,22 +142,30 @@ enum DockSelfTest {
         check("music stopping: the pill draws back into the ball",
               between(morph.shrink) >= 4 && zip(morph.shrink, morph.shrink.dropFirst()).allSatisfy { $0 >= $1 }
               && morph.shrink.last == morph.ball, "\(morph.shrink.map { Int($0) })")
-        // ---- the pill's line: the song, then the lyrics, rolling up
+        // ---- the pill's line: the song until the first lyric, then the lyrics, rolling up
         let style = UserDefaults.standard.object(forKey: "dock.mediaStyle")
         Prefs.set("dock.mediaStyle", 1)
         var sung = song
-        sung.title = "Ticker Song"; sung.duration = 200; sung.elapsed = 30; sung.anchor = Date()
+        sung.title = "Ticker Song"; sung.duration = 200; sung.elapsed = 5; sung.anchor = Date()
         LyricsProvider.shared.debugSeed(title: sung.title, artist: sung.artist, duration: 200,
-                                        lines: [.init(time: 0, text: "First line"), .init(time: 25, text: "Second line")])
+                                        lines: [.init(time: 10, text: "First line"), .init(time: 25, text: "Second line"),
+                                                .init(time: 60, text: " ")])
         MediaObserver.shared.debugInject(sung)
         _ = FloatingDockPanel.debugBall(page: nil)
-        let start = FloatingDockPanel.debugTicker(after: 0)
-        let lyric = FloatingDockPanel.debugTicker(after: FloatingDockPanel.songShare + 1)
-        let again = FloatingDockPanel.debugTicker(after: FloatingDockPanel.tickerRound + 1)
-        check("pill line: the song, then the lyric, the song again each round (\(start.text) → \(lyric.text) → \(again.text))",
-              start.text == "Ticker Song — Tester" && lyric.text == "Second line" && again.text == start.text)
-        check("pill line: each change rolls in (\(start.rolls) → \(lyric.rolls) → \(again.rolls))",
-              lyric.rolls == start.rolls + 1 && again.rolls == lyric.rolls + 1)
+        let start = FloatingDockPanel.debugTicker()
+        func at(_ seconds: Double) -> (text: String, rolls: Int) {
+            sung.elapsed = seconds; sung.anchor = Date()
+            MediaObserver.shared.debugInject(sung)
+            return FloatingDockPanel.debugTicker()
+        }
+        let first = at(12), held = at(20), second = at(40), later = at(120)
+        check("pill line: the song before the first lyric, then each lyric held until the next (through a blank line) "
+              + "(\(start.text) → \(first.text) → \(held.text) → \(second.text) → \(later.text))",
+              start.text == "Ticker Song — Tester" && first.text == "First line" && held.text == "First line"
+                && second.text == "Second line" && later.text == "Second line")
+        check("pill line: each new line rolls in, slowly (\(start.rolls) → \(first.rolls) → \(second.rolls), \(MarqueeLabel.rollDuration) s)",
+              first.rolls == start.rolls + 1 && held.rolls == first.rolls && second.rolls == first.rolls + 1
+                && later.rolls == second.rolls && MarqueeLabel.rollDuration >= 1)
         FloatingDockPanel.debugHideBall()
         UserDefaults.standard.set(style, forKey: "dock.mediaStyle")
 

@@ -12,11 +12,13 @@ A menu bar suite for macOS. Screenshots, pinned images, clipboard history, Now P
 
 ## Features
 
-**Floating dock.** A small ball that stays where you drop it. Hover over it to open a card next to it; the card grows out of the ball and folds back when the pointer leaves. While media plays, the ball stretches into a pill with the spinning cover and a level meter. The card keeps Home, Terminal, Shelf and Clipboard; its Settings icon opens Settings in the main window. A page opened with its shortcut stays in front until you close it; once you switch to another page, the card folds away when you click elsewhere. In the card, Tab / ⇧Tab move between fields and settings; Space or Return works the focused control.
+**Floating dock.** A small ball that stays where you drop it. Hover over it to open a card next to it; the card grows out of the ball and folds back when the pointer leaves. While media plays, the ball stretches into a pill with the spinning cover and a level meter, and (with Song and lyrics) the lyric being sung, held until the next line rolls up slowly from below; the song's name shows only while there is no lyric. The card keeps Home, Terminal, Shelf and Clipboard; its Settings icon opens Settings in the main window. A page opened with its shortcut stays in front until you close it; once you switch to another page, the card folds away when you click elsewhere. In the card, Tab / ⇧Tab move between fields and settings; Space or Return works the focused control.
 
 **Menu bar.** A left click on the menu bar icon drops down a panel: what is playing on top, then CPU, memory, GPU, disk, battery, network speed and Keep Awake. A right click shows the menu, which starts with **Open Dashboard**.
 
-**Main window (Dashboard).** Open Dashboard (from the panel, the menu or the Dock icon) opens an ordinary window with every page down the left: Home, Activity, Agenda, Terminal, Shelf, Clipboard and Settings. A page is shown in one place at a time: opening it in the window takes it from the card, and it comes back when the card folds. Settings opens on a list of its topics (the page list stays on the left); a topic opens its settings, and Back returns to the list.
+**Main window (Dashboard).** Open Dashboard (from the panel, the menu or the Dock icon) opens an ordinary window with every page down the left: Home, Activity, Agenda, Terminal, Shelf, Clipboard and Settings. A page is shown in one place at a time: opening it in the window takes it from the card, and it comes back when the card folds. Settings opens on a list of its topics (the page list stays on the left); a topic opens its settings, and Back returns to the list. The window opens on the screen the pointer is on.
+
+**Help.** The **?** at the bottom left of the main window (⌘?) explains every feature, with a search that narrows the help to the topics mentioning your words.
 
 **Screenshots.**
 - Capture with window detection, a magnifier and annotations with undo and redo: frames (rectangle or ellipse), arrows, pen, text, and a mosaic brush in three sizes to hide sensitive content. The chosen tool's options (shape, colour, brush size) open in a strip under the toolbar.
@@ -47,7 +49,7 @@ A menu bar suite for macOS. Screenshots, pinned images, clipboard history, Now P
 
 **Terminal.**
 - A tabbed PTY terminal with SSH and Telnet profiles.
-- SFTP browsing, uploads and downloads.
+- SFTP browsing, uploads and downloads; the Downloads button shows a running transfer's progress.
 - Local, remote and dynamic port forwarding; SOCKS5 and HTTP proxies.
 - A credential vault stored in the macOS Keychain.
 
@@ -61,8 +63,8 @@ A menu bar suite for macOS. Screenshots, pinned images, clipboard history, Now P
 **Appearance.**
 - The card's background opacity can be lowered to show the blurred desktop behind it.
 - The menu bar can show the buddy (still, or flapping faster as memory or CPU fills up) or the status icon, optionally with the network speed to its right (upload above, download below); the dock ball can show the logo or the status icon; the status icon can also be shown in the Dock.
-- The status icon is a live icon laid out like the iPhone "Duo" status icon,; OmniHub draws it with its own code. An open ring with a head at the top, a glyph in the middle and dots (or an arc) on the same circle at the bottom, so the whole reads as one round outline, each show what you pick (battery, CPU, memory, disk, Wi-Fi, network, volume).
-- Battery on the ring: the charge as a figure on battery, a bolt while charging, a plug when plugged in and not charging or full (or the figure, if you prefer). The colour follows the charge: green from 80 %, shading through yellow and orange to red at 20 % or less, plugged in or not; the bolt and plug are green, the figure turns red at 10 % or less and yellow in Low Power Mode. A Mac without a battery shows the plug. A small amber coffee cup next to the figure on top (in the top right corner when no ring is shown) means Keep Awake is on.
+- The status icon is a live icon laid out like the iPhone "Duo" status icon; OmniHub draws it with its own code. An open ring with a head at the top, a glyph in the middle and dots (or an arc) on the same circle at the bottom, so the whole reads as one round outline, each show what you pick (battery, CPU, memory, disk, Wi-Fi, network, volume).
+- Battery on the ring: the charge as a figure on battery, a bolt while charging, a plug when plugged in and not charging or full (or the figure, if you prefer). On battery the ring keeps the default colour from 80 %, shading through yellow and orange to red at 20 % or less, and turns green only while charging; the bolt is green, the plug the default colour, the figure turns red at 10 % or less and yellow in Low Power Mode. A Mac without a battery shows the plug. A small amber coffee cup next to the figure on top (in the top right corner when no ring is shown) means Keep Awake is on.
 - Colours: themes (Automatic, Aurora, Sunset, Mint, Sakura, Violet, Paper) or your own colour for the ring, middle, dots and background.
 
 ## Installation

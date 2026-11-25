@@ -458,6 +458,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             NotificationCenter.default.post(name: .settingsChanged, object: nil)
         case "open/terminal": FloatingDockPanel.open(.terminal)
         case "open/settings": FloatingDockPanel.open(.settings)
+        case "open/help": MainWindow.openHelp()
         case "open/settings/0", "open/settings/1", "open/settings/2", "open/settings/3",
              "open/settings/4", "open/settings/5", "open/settings/6", "open/settings/7", "open/settings/8":
             FloatingDockPanel.open(.settings, toggle: false, settingsTab: Int(command.suffix(1)))

@@ -14,8 +14,8 @@ final class MarqueeLabel: NSView {
         didSet { if oldValue != text { rebuild() } }
     }
 
-    /// How long a line takes to roll in.
-    static let rollDuration: CFTimeInterval = 0.75
+    /// How long a line takes to roll in: slow, like a lyrics view.
+    static let rollDuration: CFTimeInterval = 1.2
     /// Lines rolled in so far (diagnostics).
     private(set) var rolls = 0
 
@@ -39,8 +39,8 @@ final class MarqueeLabel: NSView {
         rolls += 1
 
         let reduce = MainWindowMotion.reduceMotion
-        let lift = reduce ? 0 : bounds.height * 0.8
-        let ease = CAMediaTimingFunction(controlPoints: 0.22, 1, 0.36, 1)
+        let lift = reduce ? 0 : bounds.height
+        let ease = CAMediaTimingFunction(name: .easeInEaseOut)
         CATransaction.begin()
         CATransaction.setCompletionBlock { outgoing.removeFromSuperlayer() }
         let away = CABasicAnimation(keyPath: "transform.translation.y")
@@ -51,7 +51,7 @@ final class MarqueeLabel: NSView {
         fadeOut.toValue = 0
         let leave = CAAnimationGroup()
         leave.animations = [away, fadeOut]
-        leave.duration = reduce ? 0.2 : Self.rollDuration
+        leave.duration = reduce ? 0.3 : Self.rollDuration
         leave.timingFunction = ease
         leave.fillMode = .forwards
         leave.isRemovedOnCompletion = false
@@ -65,7 +65,7 @@ final class MarqueeLabel: NSView {
         fadeIn.toValue = 1
         let arrive = CAAnimationGroup()
         arrive.animations = [rise, fadeIn]
-        arrive.duration = reduce ? 0.2 : Self.rollDuration
+        arrive.duration = reduce ? 0.3 : Self.rollDuration
         arrive.timingFunction = ease
         textLayer.add(arrive, forKey: "roll")
         CATransaction.commit()

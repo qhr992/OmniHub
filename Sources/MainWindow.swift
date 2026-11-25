@@ -24,6 +24,10 @@ final class MainWindow: NSWindow, NSWindowDelegate {
     private let placeholder = NSTextField(labelWithString: L("Open in the dock card"))
     private(set) var page: Page = .home
     private let backButton = BackButton()
+    /// "?" at the bottom of the page list, and the help it opens over the page.
+    private let helpButton = HelpButton()
+    private var help: HelpView?
+    private(set) var helpShown = false
     private let side = NSVisualEffectView()
     private let edge = NSView()
     /// The title alone, or after Back (inside a Settings topic).
@@ -129,7 +133,9 @@ final class MainWindow: NSWindow, NSWindowDelegate {
             view.translatesAutoresizingMaskIntoConstraints = false
             root.addSubview(view)
         }
-        for view in [brand, sidebar] as [NSView] {
+        helpButton.target = self
+        helpButton.action = #selector(toggleHelp)
+        for view in [brand, sidebar, helpButton] as [NSView] {
             view.translatesAutoresizingMaskIntoConstraints = false
             side.addSubview(view)
         }
@@ -148,8 +154,10 @@ final class MainWindow: NSWindow, NSWindowDelegate {
             sidebar.topAnchor.constraint(equalTo: side.topAnchor, constant: 52),
             sidebar.leadingAnchor.constraint(equalTo: side.leadingAnchor, constant: 10),
             sidebar.trailingAnchor.constraint(equalTo: side.trailingAnchor, constant: -10),
-            brand.leadingAnchor.constraint(equalTo: side.leadingAnchor, constant: 20),
-            brand.bottomAnchor.constraint(equalTo: side.bottomAnchor, constant: -16),
+            helpButton.leadingAnchor.constraint(equalTo: side.leadingAnchor, constant: 16),
+            helpButton.bottomAnchor.constraint(equalTo: side.bottomAnchor, constant: -12),
+            brand.leadingAnchor.constraint(equalTo: helpButton.trailingAnchor, constant: 9),
+            brand.centerYAnchor.constraint(equalTo: helpButton.centerYAnchor),
 
             titleLabel.topAnchor.constraint(equalTo: root.topAnchor, constant: 12),
             // Back sits where the title starts, level with it; the title moves over.
@@ -168,9 +176,9 @@ final class MainWindow: NSWindow, NSWindowDelegate {
         contentView = root
     }
 
-    /// Back shows only inside a Settings topic (the page list stays throughout).
+    /// Back shows in Help and inside a Settings topic (the page list stays throughout).
     private func syncBack(animated: Bool) {
-        let shows = page == .settings && !FloatingDockPanel.settings.isOverview
+        let shows = helpShown || (page == .settings && !FloatingDockPanel.settings.isOverview)
         guard shows == backButton.isHidden else { return }
         NSLayoutConstraint.deactivate(shows ? plainTitle : titleAfterBack)
         NSLayoutConstraint.activate(shows ? titleAfterBack : plainTitle)
@@ -184,36 +192,93 @@ final class MainWindow: NSWindow, NSWindowDelegate {
         MainWindowMotion.crossfade(titleLabel.layer)
     }
 
-    /// Back (⌘[ too): from a Settings topic to the list of topics.
+    /// Back (⌘[ too): out of Help, or from a Settings topic to the list of topics.
     @objc private func goBack() {
+        if helpShown {
+            hideHelp(animated: isVisible && !FloatingDockPanel.headless)
+            return
+        }
         guard page == .settings, !FloatingDockPanel.settings.isOverview else { return }
         FloatingDockPanel.settings.showOverview(animated: isVisible && !FloatingDockPanel.headless)
     }
 
     /// Settings went between its overview and a topic: the title follows.
     private func settingsTopicChanged() {
-        guard page == .settings else { return }
+        guard page == .settings, !helpShown else { return }
         syncBack(animated: isVisible && !FloatingDockPanel.headless)
-        let title = FloatingDockPanel.settings.topicTitle ?? Page.settings.title
+        refreshTitle(animated: isVisible && !FloatingDockPanel.headless)
+    }
+
+    /// "Help", the Settings topic, or the page's name (Home greets instead).
+    private func refreshTitle(animated: Bool) {
+        let title = helpShown ? L("Help")
+            : page == .settings ? (FloatingDockPanel.settings.topicTitle ?? Page.settings.title) : page.title
+        titleLabel.isHidden = !helpShown && page == .home
         guard titleLabel.stringValue != title else { return }
         titleLabel.stringValue = title
-        if isVisible, !FloatingDockPanel.headless { MainWindowMotion.crossfade(titleLabel.layer) }
+        if animated { MainWindowMotion.crossfade(titleLabel.layer) }
+    }
+
+    // MARK: Help
+
+    @objc private func toggleHelp() {
+        let animated = isVisible && !FloatingDockPanel.headless
+        if helpShown { hideHelp(animated: animated) } else { showHelp(animated: animated) }
+    }
+
+    /// Help over the page area, the keyboard in its search field.
+    func showHelp(animated: Bool) {
+        guard !helpShown else { return }
+        let view = help ?? HelpView()
+        help = view
+        view.removeFromSuperview()
+        host.addSubview(view)
+        NSLayoutConstraint.activate([
+            view.topAnchor.constraint(equalTo: host.topAnchor),
+            view.leadingAnchor.constraint(equalTo: host.leadingAnchor),
+            view.trailingAnchor.constraint(equalTo: host.trailingAnchor),
+            view.bottomAnchor.constraint(equalTo: host.bottomAnchor)
+        ])
+        view.debugSearch("")
+        helpShown = true
+        helpButton.isActive = true
+        syncBack(animated: animated)
+        refreshTitle(animated: animated)
+        if animated { MainWindowMotion.arrive(view.layer, dx: 0, dy: -8, duration: MainWindowMotion.pageDuration) }
+        makeFirstResponder(view.searchField)
+    }
+
+    private func hideHelp(animated: Bool) {
+        guard helpShown else { return }
+        help?.removeFromSuperview()
+        helpShown = false
+        helpButton.isActive = false
+        syncBack(animated: false)
+        refreshTitle(animated: animated)
+        if animated { MainWindowMotion.arrive(host.layer, dx: 0, dy: -8, duration: MainWindowMotion.pageDuration) }
+    }
+
+    /// Opens the window with Help showing.
+    static func openHelp() {
+        openDashboard()
+        instance().showHelp(animated: false)
     }
 
     // MARK: Pages
 
     private func show(_ target: Page, activate: Bool = true) {
         let old = page
+        // Picking a page (the one shown too) leaves Help.
+        let leavingHelp = helpShown
+        hideHelp(animated: false)
         // Motion only for a change the person sees.
-        let animated = isVisible && !FloatingDockPanel.headless && old != target
+        let animated = isVisible && !FloatingDockPanel.headless && (old != target || leavingHelp)
         page = target
         // Settings always opens on its overview, scrolled to the top.
         if target == .settings { FloatingDockPanel.settings.showOverview() }
         Prefs.set(Self.pageKey, target.rawValue)
         sidebar.select(Self.pages.firstIndex(of: target) ?? 0)
-        titleLabel.stringValue = target.title
-        // Home greets instead of a title.
-        titleLabel.isHidden = target == .home
+        refreshTitle(animated: false)
         syncBack(animated: false)
         install()
         if animated { animateArrival() }
@@ -380,6 +445,9 @@ final class MainWindow: NSWindow, NSWindowDelegate {
     var debugListShown: Bool { !side.isHidden }
     var debugBackShown: Bool { !backButton.isHidden }
     var debugTitle: String { titleLabel.isHidden ? "" : titleLabel.stringValue }
+    var debugHelp: HelpView? { helpShown ? help : nil }
+    func debugHelpButton() { helpButton.performClick(nil) }
+    var debugHelpButtonFrame: NSRect { helpButton.convert(helpButton.bounds, to: nil) }
     func debugBack() { backButton.performClick(nil) }
     var debugHost: NSView { host }
     var debugShown: NSView? { shown }
