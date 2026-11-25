@@ -172,7 +172,10 @@ final class MainHomeView: NSView, DockPage {
 /// Now Playing: the cover, title, artist, the current lyric line, progress
 /// and transport, washed in the cover's colour.
 final class NowPlayingTile: HomeTile {
+    /// A click on the cover or the words: opens the app that is playing.
+    var onOpen: () -> Void = { MediaObserver.shared.activateOwner() }
     private let artwork = CoverView()
+    private let words = ClickableStack()
     private let title = NSTextField(labelWithString: "")
     private let artist = NSTextField(labelWithString: "")
     private let lyric = NSTextField(labelWithString: "")
@@ -209,11 +212,19 @@ final class NowPlayingTile: HomeTile {
         playButton.setAccessibilityTitle(L("Play / Pause"))
         let transport = NSStackView(views: [previous, playButton, next, elapsed])
         transport.spacing = 18
-        let text = NSStackView(views: [title, artist, lyric, progress, transport])
+        for field in [title, artist, lyric] { words.addArrangedSubview(field) }
+        words.orientation = .vertical
+        words.alignment = .leading
+        words.spacing = 6
+        words.toolTip = L("Open the app that is playing")
+        words.onClick = { [weak self] in self?.onOpen() }
+        artwork.toolTip = L("Open the app that is playing")
+        artwork.onClick = { [weak self] in self?.onOpen() }
+        let text = NSStackView(views: [words, progress, transport])
         text.orientation = .vertical
         text.alignment = .leading
         text.spacing = 6
-        text.setCustomSpacing(12, after: lyric)
+        text.setCustomSpacing(12, after: words)
         progress.translatesAutoresizingMaskIntoConstraints = false
         progress.widthAnchor.constraint(equalTo: text.widthAnchor).isActive = true
         details.orientation = .horizontal
@@ -268,6 +279,21 @@ final class NowPlayingTile: HomeTile {
 
     var debugText: String { details.isHidden ? "none" : "\(title.stringValue) – \(artist.stringValue)" }
 
+    /// Test hook: what a click on the cover runs, as it is set.
+    func debugOpen() { artwork.onClick?() }
+
+    /// Test hook: what a click on the cover and on the words runs.
+    func debugClicks() -> (cover: Bool, words: Bool) {
+        var hits = 0
+        let saved = onOpen
+        onOpen = { hits += 1 }
+        defer { onOpen = saved }
+        artwork.onClick?()
+        let cover = hits == 1
+        words.onClick?()
+        return (cover, hits == 2)
+    }
+
     private static func time(_ seconds: Double) -> String {
         let total = max(0, Int(seconds))
         return String(format: "%d:%02d", total / 60, total % 60)
@@ -305,7 +331,7 @@ final class HomeProgress: NSView {
 }
 
 /// The system at a glance: CPU, memory, disk and battery rings, the
-/// network rate and Keep Awake.
+/// network rate and Display Sleep.
 final class SystemTile: HomeTile {
     private let cpu = RingGauge(caption: "CPU", tint: StatusIcon.Tint.cpu)
     private let memory = RingGauge(caption: "Memory", tint: StatusIcon.Tint.memory)
@@ -342,7 +368,7 @@ final class SystemTile: HomeTile {
         let on = KeepAwake.shared.isOn
         let colour = on ? StatusIcon.Tint.awake : NSColor(white: 1, alpha: 0.5)
         let title = NSMutableAttributedString(attributedString: HomeLink.symbol(KeepAwake.symbolName, size: 11, color: colour))
-        title.append(NSAttributedString(string: " " + (on ? KeepAwake.shared.statusText : L("Keep Awake")),
+        title.append(NSAttributedString(string: " " + KeepAwake.shared.summary,
                                         attributes: [.font: NSFont.systemFont(ofSize: 12, weight: .medium),
                                                      .foregroundColor: colour]))
         awake.attributedTitle = title
@@ -428,6 +454,27 @@ final class ActionsTile: HomeTile {
 /// letterboxed).
 final class CoverView: NSView {
     var image: NSImage? { didSet { needsDisplay = true } }
+    /// Set: the cover is a button (pointing hand, click on release inside).
+    var onClick: (() -> Void)? { didSet { window?.invalidateCursorRects(for: self) } }
+    private var pressed = false
+
+    override func acceptsFirstMouse(for event: NSEvent?) -> Bool { onClick != nil }
+    override func mouseDown(with event: NSEvent) {
+        guard onClick != nil else { return super.mouseDown(with: event) }
+        pressed = true
+        layer?.opacity = 0.75
+    }
+
+    override func mouseUp(with event: NSEvent) {
+        guard onClick != nil else { return super.mouseUp(with: event) }
+        defer { pressed = false; layer?.opacity = 1 }
+        guard pressed, bounds.contains(convert(event.locationInWindow, from: nil)) else { return }
+        onClick?()
+    }
+
+    override func resetCursorRects() {
+        if onClick != nil { addCursorRect(bounds, cursor: .pointingHand) }
+    }
 
     override func draw(_ dirtyRect: NSRect) {
         let clip = NSBezierPath(roundedRect: bounds, xRadius: 12, yRadius: 12)

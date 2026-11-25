@@ -162,13 +162,26 @@ final class FloatingDockPanel: NSPanel, EscDismissable {
 
     static func toggle() {
         if let existing = shared, existing.isVisible {
-            existing.closeCard()
-            existing.orderOut(nil)
-            Prefs.set("dock.hidden", true)
+            hide()
             return
         }
         show()
     }
+
+    /// Shows or hides the ball now, and remembers it (Settings › Show dock).
+    static func setVisible(_ visible: Bool) {
+        if visible { show() } else { hide() }
+    }
+
+    static func hide() {
+        Prefs.set("dock.hidden", true)
+        guard let existing = shared else { return }
+        existing.closeCard()
+        existing.orderOut(nil)
+    }
+
+    /// Test hook: whether the ball is on screen.
+    static var debugVisible: Bool { shared?.isVisible ?? false }
 
     /// Shown at launch unless the user hid it last time.
     static func showAtLaunch() {

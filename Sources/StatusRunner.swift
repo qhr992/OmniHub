@@ -40,7 +40,7 @@ final class StatusRunner {
     /// 0 = memory, 1 = CPU.
     private var metric: Int { Self.speed == 1 ? 1 : 0 }
     private var animated: Bool { Self.speed != 2 }
-    /// The rates last read, as shown ("12 KB/s").
+    /// The rates last read, as the menu bar shows them ("12.0 K/s").
     private var rates = (up: "", down: "")
 
     var debugState: String {
@@ -51,7 +51,7 @@ final class StatusRunner {
 
     @objc private func statsChanged() {
         let stats = SystemStats.shared.snapshot
-        rates = (SystemStats.rate(stats.netOut), SystemStats.rate(stats.netIn))
+        rates = (Self.menuBarText(stats.netOut), Self.menuBarText(stats.netIn))
         if showsStatusIcon {
             if timer != nil || interval != 0 {
                 interval = 0
@@ -105,49 +105,91 @@ final class StatusRunner {
 
     // MARK: Network speed
 
-    private static let speedFont = NSFont.monospacedDigitSystemFont(ofSize: 9, weight: .semibold)
-    /// Wide enough for "888.8 MB/s", so the menu bar does not shift as figures change.
-    private static let speedWidth: CGFloat = {
-        let text = ("888.8 MB/s" as NSString).size(withAttributes: [.font: speedFont]).width
-        return ceil(text) + 9
+    /// Condensed, with figures of one width: the column stays narrow.
+    private static let speedFont: NSFont = {
+        let base = NSFont.systemFont(ofSize: 9, weight: .semibold, width: .condensed)
+        let figures = base.fontDescriptor.addingAttributes([.featureSettings: [[
+            NSFontDescriptor.FeatureKey.typeIdentifier: kNumberSpacingType,
+            NSFontDescriptor.FeatureKey.selectorIdentifier: kMonospacedNumbersSelector]]])
+        return NSFont(descriptor: figures, size: 9) ?? .monospacedDigitSystemFont(ofSize: 9, weight: .semibold)
     }()
+    private static let arrowConfig = NSImage.SymbolConfiguration(pointSize: 6, weight: .heavy)
+
+    /// Where each part of a rate line goes, so only the figures move: the
+    /// whole number ends at the point, `pointX` (room for "888"), the decimal
+    /// starts there, the unit at `unitX`, the arrow at `arrowX`; `width` is
+    /// the whole column.
+    struct SpeedLayout { let pointX, unitX, arrowX, width: CGFloat }
+    static let speedLayout: SpeedLayout = {
+        func width(_ text: String) -> CGFloat { (text as NSString).size(withAttributes: [.font: speedFont]).width }
+        let whole = ceil(width("888"))
+        let decimal = (0...9).map { width(".\($0)") }.max() ?? 0
+        let unit = max(width("K/s"), width("M/s"))
+        let arrow = NSImage(systemSymbolName: "arrow.down", accessibilityDescription: nil)?
+            .withSymbolConfiguration(arrowConfig)?.size.width ?? 6
+        let unitX = ceil(whole + decimal + 1.5)
+        let arrowX = ceil(unitX + unit + 1)
+        return SpeedLayout(pointX: whole, unitX: unitX, arrowX: arrowX, width: ceil(arrowX + arrow))
+    }()
+
+    /// A rate as the menu bar shows it: one decimal, in K/s below 1000 K/s,
+    /// else in M/s (at most 999.9).
+    static func menuBarRate(_ bytesPerSecond: Double) -> (number: String, unit: String) {
+        let kilo = max(bytesPerSecond, 0) / 1024
+        if (kilo * 10).rounded() < 10_000 { return (String(format: "%.1f", kilo), "K/s") }
+        return (String(format: "%.1f", min(kilo / 1024, 999.9)), "M/s")
+    }
+
+    static func menuBarText(_ bytesPerSecond: Double) -> String {
+        let rate = menuBarRate(bytesPerSecond)
+        return "\(rate.number) \(rate.unit)"
+    }
 
     /// `icon` with the network speed to its right, when that is on.
     private func withSpeed(_ icon: NSImage) -> NSImage {
         guard Self.showsNetSpeed else { return icon }
-        return Self.compose(icon, up: rates.up, down: rates.down)
+        let stats = SystemStats.shared.snapshot
+        return Self.compose(icon, up: stats.netOut, down: stats.netIn)
     }
 
-    /// The icon, a gap, then the two rates in a column of fixed width.
-    static func compose(_ icon: NSImage, up: String, down: String) -> NSImage {
-        let rates = (up: up, down: down)
-        let gap: CGFloat = 4
+    /// The icon, a gap, then the two rates (bytes a second) in a column of fixed width.
+    static func compose(_ icon: NSImage, up: Double, down: Double) -> NSImage {
+        let rates = (up: menuBarRate(up), down: menuBarRate(down))
+        let gap: CGFloat = 3
         let height = max(icon.size.height, 22)
-        let size = NSSize(width: icon.size.width + gap + speedWidth, height: height)
+        let size = NSSize(width: icon.size.width + gap + speedLayout.width, height: height)
         // A template icon stays one: everything in black, tinted by the menu bar.
         let template = icon.isTemplate
         let image = NSImage(size: size, flipped: false) { _ in
             icon.draw(in: NSRect(x: 0, y: (height - icon.size.height) / 2, width: icon.size.width, height: icon.size.height))
             let colour: NSColor = template ? .black : .labelColor
             let x = icon.size.width + gap
-            drawRate("arrow.up", rates.up, at: NSPoint(x: x, y: height / 2 + 0.5), colour: colour)
-            drawRate("arrow.down", rates.down, at: NSPoint(x: x, y: 1), colour: colour)
+            drawRate(rates.up, "arrow.up", at: NSPoint(x: x, y: height / 2 + 0.5), colour: colour)
+            drawRate(rates.down, "arrow.down", at: NSPoint(x: x, y: 1), colour: colour)
             return true
         }
         image.isTemplate = template
-        image.accessibilityDescription = "OmniHub ↑\(rates.up) ↓\(rates.down)"
+        image.accessibilityDescription = "OmniHub ↑\(menuBarText(up)) ↓\(menuBarText(down))"
         return image
     }
 
-    /// An arrow and a rate on one line, its bottom-left at `origin`.
-    private static func drawRate(_ symbol: String, _ text: String, at origin: NSPoint, colour: NSColor) {
-        let config = NSImage.SymbolConfiguration(pointSize: 7, weight: .heavy)
-            .applying(NSImage.SymbolConfiguration(paletteColors: [colour]))
-        if let arrow = NSImage(systemSymbolName: symbol, accessibilityDescription: nil)?.withSymbolConfiguration(config) {
-            arrow.draw(in: NSRect(x: origin.x, y: origin.y + 1.5, width: arrow.size.width, height: arrow.size.height))
+    /// One line, its bottom-left at `origin`: the figure, the unit, then the arrow.
+    private static func drawRate(_ rate: (number: String, unit: String), _ symbol: String, at origin: NSPoint,
+                                 colour: NSColor) {
+        let attributes: [NSAttributedString.Key: Any] = [.font: speedFont, .foregroundColor: colour]
+        let layout = speedLayout
+        let parts = rate.number.split(separator: ".", maxSplits: 1).map(String.init)
+        let whole = (parts.first ?? "") as NSString
+        let wholeWidth = whole.size(withAttributes: attributes).width
+        whole.draw(at: NSPoint(x: origin.x + layout.pointX - wholeWidth, y: origin.y - 0.5), withAttributes: attributes)
+        if parts.count > 1 {
+            ("." + parts[1] as NSString).draw(at: NSPoint(x: origin.x + layout.pointX, y: origin.y - 0.5), withAttributes: attributes)
         }
-        (text as NSString).draw(at: NSPoint(x: origin.x + 8, y: origin.y - 0.5),
-                                withAttributes: [.font: speedFont, .foregroundColor: colour])
+        (rate.unit as NSString).draw(at: NSPoint(x: origin.x + layout.unitX, y: origin.y - 0.5), withAttributes: attributes)
+        let config = arrowConfig.applying(NSImage.SymbolConfiguration(paletteColors: [colour]))
+        if let arrow = NSImage(systemSymbolName: symbol, accessibilityDescription: nil)?.withSymbolConfiguration(config) {
+            arrow.draw(in: NSRect(x: origin.x + layout.arrowX, y: origin.y + 1.5, width: arrow.size.width, height: arrow.size.height))
+        }
     }
 
     // MARK: Artwork

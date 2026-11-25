@@ -30,7 +30,7 @@ enum HelpContent {
 
     static let english: [HelpSection] = [
         section("Getting Around", "map", Tint.blue, [
-            ("Menu bar icon", "A left click drops down a panel: what is playing on top, then Keep Awake and live tiles for CPU, memory, GPU, disk, network and battery, each with its recent history. At the bottom, Open Dashboard and Settings. A right click (or Control-click) shows the menu; its first item is Open Dashboard."),
+            ("Menu bar icon", "A left click drops down a panel: what is playing on top, then Display Sleep and live tiles for CPU, memory, GPU, disk, network and battery, each with its recent history. At the bottom, Open Dashboard and Settings. A right click (or Control-click) shows the menu; its first item is Open Dashboard."),
             ("Dashboard (main window)", "An ordinary window with every page down the left: Home, Activity, Agenda, Terminal, Shelf, Clipboard and Settings. It opens on the page shown last, on the screen the pointer is on. While it is open, OmniHub has a Dock icon and is in ⌘-Tab."),
             ("Dock ball and card", "A small ball that stays wherever you drag it. Rest the pointer on it and a card opens beside it with Home, Terminal, Shelf and Clipboard; move away and it folds back. A page opened with a shortcut stays until you close it. A page is shown in one place at a time: opening it in the main window takes it from the card."),
             ("Keyboard", "Tab and ⇧Tab move between fields and settings; Space or Return works the focused control. ↑ / ↓ move along lists. ⌘[ goes back in Settings and Help.")
@@ -78,7 +78,7 @@ enum HelpContent {
             ("Live charts", "CPU, GPU, memory, disk and network as figures with their recent history. Pick what is shown and how often it refreshes in Settings › Activity."),
             ("Battery", "Charge, state, health, cycle count, temperature and power."),
             ("Top apps", "The busiest apps by CPU or memory; helper processes count toward their app."),
-            ("Keep Awake", "Keeps the display from sleeping for 30 minutes, 1 or 2 hours, or until turned off. Also in the menu bar menu and panel. A small coffee cup on the status icon means it is on."),
+            ("Display Sleep", "On as usual. Turn it off for 30 minutes, 1 or 2 hours, or until you turn it back on, and the display stays awake meanwhile. Also in the menu bar menu and panel. A small coffee cup on the status icon means it is off."),
             ("IP addresses", "This Mac's addresses; the public IP only if you turn it on (it asks api.ipify.org).")
         ]),
         section("Menu Bar and Status Icon", "menubar.rectangle", Tint.indigo, [
@@ -109,7 +109,7 @@ enum HelpContent {
 
     static let chinese: [HelpSection] = [
         section("入门", "map", Tint.blue, [
-            ("菜单栏图标", "左键点击下拉信息看板：最上面是正在播放，下面是不息屏，以及 CPU、内存、GPU、磁盘、网络、电池的实时卡片，每项都带最近的变化曲线。底部有「进入 Dashboard」和「设置」。右键（或按住 Control 点击）弹出菜单，第一项是「进入 Dashboard」。"),
+            ("菜单栏图标", "左键点击下拉信息看板：最上面是正在播放，下面是息屏，以及 CPU、内存、GPU、磁盘、网络、电池的实时卡片，每项都带最近的变化曲线。底部有「进入 Dashboard」和「设置」。右键（或按住 Control 点击）弹出菜单，第一项是「进入 Dashboard」。"),
             ("Dashboard（主窗口）", "一个普通窗口，左侧列出全部页面：首页、活动、事项、终端、暂存、剪贴板、设置。打开时显示上次的页面，并出现在光标所在的屏幕上。窗口打开期间，OmniHub 在程序坞有图标，也能用 ⌘-Tab 切换。"),
             ("悬浮球和看板", "一个可以拖到任意位置停住的小球。光标停在上面，看板会在旁边展开，包含首页、终端、暂存、剪贴板；光标离开后缩回。用快捷键打开的页面会一直保持，直到你关闭。同一个页面同一时间只在一处显示：在主窗口打开会从看板拿过来。"),
             ("键盘操作", "Tab / ⇧Tab 在输入框和各项设置之间切换，空格或回车操作当前控件，↑ / ↓ 在列表中移动。在设置和帮助里 ⌘[ 返回。")
@@ -157,7 +157,7 @@ enum HelpContent {
             ("实时曲线", "CPU、GPU、内存、磁盘和网络的数值及最近的变化曲线。显示哪些、多久刷新一次在「设置 → 活动」里选。"),
             ("电池", "电量、充电状态、健康度、循环次数、温度和功率。"),
             ("占用排行", "按 CPU 或内存排出最忙的应用，应用的辅助进程算在应用名下。"),
-            ("不息屏", "在 30 分钟、1 小时、2 小时内或直到手动关闭前，屏幕不会熄灭。菜单栏菜单和信息看板里也能开。状态图标上的小咖啡杯表示已开启。"),
+            ("息屏", "默认开启。可以关闭 30 分钟、1 小时、2 小时，或一直关闭到手动开启，期间屏幕不会熄灭。菜单栏菜单和信息看板里也能设。状态图标上的小咖啡杯表示息屏已关闭。"),
             ("IP 地址", "本机的 IP 地址；公网 IP 需要你开启后才会查询（访问 api.ipify.org）。")
         ]),
         section("菜单栏与状态图标", "menubar.rectangle", Tint.indigo, [

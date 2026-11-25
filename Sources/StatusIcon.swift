@@ -278,7 +278,7 @@ final class StatusIcon {
         return (ringStart + margin, max(10, gap - 2 * margin))
     }
 
-    /// Keep Awake: a small amber coffee cup — after the figure on the ring's
+    /// Display Sleep off: a small amber coffee cup — after the figure on the ring's
     /// top, or in the top right corner when there is no ring.
     static let awakeSymbol = KeepAwake.symbolName
 
@@ -384,7 +384,7 @@ final class StatusIcon {
         var text: String?
         var symbol: String?
         var color: NSColor
-        /// Keep Awake's cup after the figure or sign.
+        /// The cup while Display Sleep is off, after the figure or sign.
         var awake = false
     }
 
@@ -630,7 +630,7 @@ final class StatusIcon {
         if let volume = readings.volume {
             parts.append(readings.muted ? L("Muted") : "\(L("Volume")) \(Int((volume * 100).rounded()))%")
         }
-        if readings.keepAwake { parts.append(L("Keep Awake")) }
+        if readings.keepAwake { parts.append(KeepAwake.shared.summary) }
         return "OmniHub · " + parts.joined(separator: " · ")
     }
 }

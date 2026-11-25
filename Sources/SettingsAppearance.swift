@@ -11,8 +11,9 @@ extension SettingsPane {
         let config = StatusIcon.Config.current
         return [
             section("Background", "paintbrush.fill", Tint.purple, [
-                row(label("Opacity"), PrefSlider(key: Self.cardOpacityKey, fallback: 100, range: 30...100, width: 220,
-                                                 suffix: "%"))
+                // Stored as opacity (30–100 %), shown as transparency (0–70 %).
+                row(label("Transparency"), PrefSlider(key: Self.cardOpacityKey, fallback: 100, range: 30...100, width: 220,
+                                                      suffix: "%", mirror: 100))
             ]),
             section("Menu Bar Icon", "menubar.rectangle", Tint.indigo, [
                 row(label("Shows"), PrefChoice(key: StatusIcon.menuBarKey, fallback: 0,
