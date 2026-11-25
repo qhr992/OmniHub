@@ -23,14 +23,12 @@ final class MainWindow: NSWindow, NSWindowDelegate {
     private let host = MainHostView()
     private let placeholder = NSTextField(labelWithString: L("Open in the dock card"))
     private(set) var page: Page = .home
-    /// Where Back leads from Settings: the page shown before it.
-    private var beforeSettings: Page = .home
     private let backButton = BackButton()
     private let side = NSVisualEffectView()
     private let edge = NSView()
-    /// Layout with the page list, and Settings' own (list hidden, Back shown).
-    private var withList: [NSLayoutConstraint] = []
-    private var settingsOnly: [NSLayoutConstraint] = []
+    /// The title alone, or after Back (inside a Settings topic).
+    private var plainTitle: [NSLayoutConstraint] = []
+    private var titleAfterBack: [NSLayoutConstraint] = []
     private weak var shown: NSView?
     /// Home here is its own view (the card keeps its compact one).
     private lazy var home = MainHomeView()
@@ -126,7 +124,6 @@ final class MainWindow: NSWindow, NSWindowDelegate {
 
         backButton.target = self
         backButton.action = #selector(goBack)
-        // The page list above the content, so it can slide away over it.
         for view in [host, side, edge, titleLabel, backButton] as [NSView] {
             view.wantsLayer = true
             view.translatesAutoresizingMaskIntoConstraints = false
@@ -155,83 +152,48 @@ final class MainWindow: NSWindow, NSWindowDelegate {
             brand.bottomAnchor.constraint(equalTo: side.bottomAnchor, constant: -16),
 
             titleLabel.topAnchor.constraint(equalTo: root.topAnchor, constant: 12),
-            // Back sits right of the traffic lights, level with the title.
-            backButton.leadingAnchor.constraint(equalTo: root.leadingAnchor, constant: 84),
+            // Back sits where the title starts, level with it; the title moves over.
+            backButton.leadingAnchor.constraint(equalTo: edge.trailingAnchor, constant: 22),
             backButton.centerYAnchor.constraint(equalTo: titleLabel.centerYAnchor),
+            host.leadingAnchor.constraint(equalTo: edge.trailingAnchor, constant: 24),
             host.topAnchor.constraint(equalTo: root.topAnchor, constant: 58),
             host.trailingAnchor.constraint(equalTo: root.trailingAnchor, constant: -24),
             host.bottomAnchor.constraint(equalTo: root.bottomAnchor, constant: -20),
             placeholder.centerXAnchor.constraint(equalTo: host.centerXAnchor),
             placeholder.centerYAnchor.constraint(equalTo: host.centerYAnchor)
         ])
-        withList = [
-            titleLabel.leadingAnchor.constraint(equalTo: edge.trailingAnchor, constant: 28),
-            host.leadingAnchor.constraint(equalTo: edge.trailingAnchor, constant: 24)
-        ]
-        settingsOnly = [
-            titleLabel.leadingAnchor.constraint(equalTo: backButton.trailingAnchor, constant: 14),
-            host.leadingAnchor.constraint(equalTo: root.leadingAnchor, constant: 20)
-        ]
-        NSLayoutConstraint.activate(withList)
+        plainTitle = [titleLabel.leadingAnchor.constraint(equalTo: edge.trailingAnchor, constant: 28)]
+        titleAfterBack = [titleLabel.leadingAnchor.constraint(equalTo: backButton.trailingAnchor, constant: 14)]
+        NSLayoutConstraint.activate(plainTitle)
         contentView = root
     }
 
-    /// Settings takes the whole window: the page list goes, Back comes.
-    private func applyMode(animated: Bool) {
-        let settings = page == .settings
-        let changed = side.isHidden != settings
-        NSLayoutConstraint.deactivate(settings ? withList : settingsOnly)
-        NSLayoutConstraint.activate(settings ? settingsOnly : withList)
-        backButton.isHidden = !settings
-        guard animated, changed else {
-            side.isHidden = settings
-            edge.isHidden = settings
-            return
-        }
-        // The list stays up while it slides away, and is shown before it slides back.
-        side.isHidden = false
-        edge.isHidden = false
-        contentView?.layoutSubtreeIfNeeded()
-        MainWindowMotion.slideList([side.layer, edge.layer], width: Self.sidebarWidth + 1, out: settings) { [weak self] in
-            guard let self, self.page == .settings || !settings else { return }
-            self.side.isHidden = self.page == .settings
-            self.edge.isHidden = self.page == .settings
-        }
+    /// Back shows only inside a Settings topic (the page list stays throughout).
+    private func syncBack(animated: Bool) {
+        let shows = page == .settings && !FloatingDockPanel.settings.isOverview
+        guard shows == backButton.isHidden else { return }
+        NSLayoutConstraint.deactivate(shows ? plainTitle : titleAfterBack)
+        NSLayoutConstraint.activate(shows ? titleAfterBack : plainTitle)
+        backButton.isHidden = !shows
+        if animated, shows { MainWindowMotion.arrive(backButton.layer, dx: 10, dy: 0, duration: 0.3) }
     }
 
-    /// The page arriving: from the right into Settings, from the left back
-    /// out of it, fading up between other pages.
-    private func animateArrival(from old: Page) {
-        let kind: MainWindowMotion.Kind = page == .settings ? .enterSettings
-            : old == .settings ? .leaveSettings : .switchPage
-        let travel = MainWindowMotion.travel
-        switch kind {
-        case .enterSettings:
-            MainWindowMotion.arrive(host.layer, dx: travel, dy: 0, duration: MainWindowMotion.settingsDuration)
-            MainWindowMotion.arrive(backButton.layer, dx: -10, dy: 0, duration: 0.3, delay: 0.08)
-        case .leaveSettings:
-            MainWindowMotion.arrive(host.layer, dx: -travel, dy: 0, duration: MainWindowMotion.settingsDuration)
-        case .switchPage:
-            MainWindowMotion.arrive(host.layer, dx: 0, dy: -8, duration: MainWindowMotion.pageDuration)
-        }
+    /// The page arriving: it fades up into place.
+    private func animateArrival() {
+        MainWindowMotion.arrive(host.layer, dx: 0, dy: -8, duration: MainWindowMotion.pageDuration)
         MainWindowMotion.crossfade(titleLabel.layer)
     }
 
-    /// Back (⌘[ too): from a topic to the Settings overview, from the
-    /// overview to the page shown before Settings.
+    /// Back (⌘[ too): from a Settings topic to the list of topics.
     @objc private func goBack() {
-        guard page == .settings else { return }
-        let pane = FloatingDockPanel.settings
-        if !pane.isOverview {
-            pane.showOverview(animated: isVisible && !FloatingDockPanel.headless)
-            return
-        }
-        show(beforeSettings, activate: false)
+        guard page == .settings, !FloatingDockPanel.settings.isOverview else { return }
+        FloatingDockPanel.settings.showOverview(animated: isVisible && !FloatingDockPanel.headless)
     }
 
     /// Settings went between its overview and a topic: the title follows.
     private func settingsTopicChanged() {
         guard page == .settings else { return }
+        syncBack(animated: isVisible && !FloatingDockPanel.headless)
         let title = FloatingDockPanel.settings.topicTitle ?? Page.settings.title
         guard titleLabel.stringValue != title else { return }
         titleLabel.stringValue = title
@@ -241,7 +203,6 @@ final class MainWindow: NSWindow, NSWindowDelegate {
     // MARK: Pages
 
     private func show(_ target: Page, activate: Bool = true) {
-        if target == .settings, page != .settings { beforeSettings = page }
         let old = page
         // Motion only for a change the person sees.
         let animated = isVisible && !FloatingDockPanel.headless && old != target
@@ -253,9 +214,9 @@ final class MainWindow: NSWindow, NSWindowDelegate {
         titleLabel.stringValue = target.title
         // Home greets instead of a title.
         titleLabel.isHidden = target == .home
-        applyMode(animated: animated)
+        syncBack(animated: false)
         install()
-        if animated { animateArrival(from: old) }
+        if animated { animateArrival() }
         guard activate, !FloatingDockPanel.headless else { return }
         let wasOpen = isVisible
         // An ordinary window: a Dock icon and ⌘-Tab while it is open.
@@ -414,7 +375,7 @@ final class MainWindow: NSWindow, NSWindowDelegate {
     }
 }
 
-/// "‹ Back" as a quiet pill: the way out of Settings.
+/// "‹ Back" as a quiet pill: from a Settings topic back to the list.
 final class BackButton: FocusButton {
     private var hovering = false {
         didSet { if hovering != oldValue { needsDisplay = true } }

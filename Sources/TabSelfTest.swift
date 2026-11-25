@@ -156,7 +156,7 @@ enum TabSelfTest {
             // Only the topic's own controls, top to bottom (the overview is hidden).
             let stops = TabOrder.stops(in: pane)
             check("Settings › \(title): no overview cards among the Tab stops",
-                  !stops.contains { $0 is SettingsTopicCard }, "\(stops.prefix(6).map(name))")
+                  !stops.contains { $0 is SettingsTopicRow }, "\(stops.prefix(6).map(name))")
             walk("Settings › \(title)", scope: pane, window: window, layoutOrder: stops)
         }
         // Space works a focused check box (pressed twice: the setting is left as it was).
@@ -176,19 +176,20 @@ enum TabSelfTest {
         // The overview: Tab reaches every card in order; the arrows move between them.
         pane.showOverview()
         pane.layoutSubtreeIfNeeded()
-        let cards = TabOrder.stops(in: pane).compactMap { $0 as? SettingsTopicCard }
+        let cards = TabOrder.stops(in: pane).compactMap { $0 as? SettingsTopicRow }
         check("Settings overview: the \(pane.tabCount) topics are the Tab stops, in order",
               cards.count == pane.tabCount && cards.map(\.topicTitle) == pane.tabTitles, "\(cards.map(\.topicTitle))")
         if cards.count > 4 {
             window.makeFirstResponder(cards[1])
             key(window, code: 125, characters: "\u{F701}")
-            let down = window.focusedControl === cards[1 + SettingsOverview.columns]
-            key(window, code: 123, characters: "\u{F702}")
-            let left = window.focusedControl === cards[SettingsOverview.columns]
+            let down = window.focusedControl === cards[2]
+            key(window, code: 125, characters: "\u{F701}")
+            key(window, code: 126, characters: "\u{F700}")
+            let up = window.focusedControl === cards[2]
             key(window, code: 36, characters: "\r")
-            check("Settings overview: ↓ / ← move between cards, Return opens one",
-                  down && left && !pane.isOverview && pane.selectedTab == SettingsOverview.columns,
-                  "↓ \(down) ← \(left) tab \(pane.selectedTab)")
+            check("Settings overview: ↓ / ↑ move along the list, Return opens a topic",
+                  down && up && !pane.isOverview && pane.selectedTab == 2,
+                  "↓ \(down) ↑ \(up) tab \(pane.selectedTab)")
         }
         pane.showOverview()
         window.makeFirstResponder(nil)

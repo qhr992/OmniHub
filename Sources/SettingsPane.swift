@@ -127,8 +127,8 @@ final class PrefSlider: NSStackView {
     }
 }
 
-/// Settings, in the main window: every topic as a card first; a card opens
-/// that topic's settings (Back returns to the cards).
+/// Settings, in the main window: every topic listed first; a topic opens
+/// its settings (Back returns to the list).
 final class SettingsPane: NSView, DockPage {
     private let tabs = NSTabView()
     /// Every topic as a card: what Settings opens on.
@@ -566,7 +566,7 @@ final class SettingsPane: NSView, DockPage {
             grid.topAnchor.constraint(equalTo: topAnchor, constant: 4),
             grid.leadingAnchor.constraint(equalTo: leadingAnchor),
             grid.trailingAnchor.constraint(equalTo: trailingAnchor),
-            grid.bottomAnchor.constraint(lessThanOrEqualTo: bottomAnchor),
+            grid.bottomAnchor.constraint(equalTo: bottomAnchor),
             detail.topAnchor.constraint(equalTo: topAnchor),
             detail.leadingAnchor.constraint(equalTo: leadingAnchor),
             detail.trailingAnchor.constraint(equalTo: trailingAnchor),

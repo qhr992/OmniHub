@@ -1,8 +1,8 @@
 import AppKit
 
-/// Settings' first view: every topic as a card in a grid. A card shows the
-/// topic's badge, its name and the groups inside it; clicking (or Return /
-/// Space) opens it, the arrow keys move between cards.
+/// Settings' first view: every topic as a row of one list. A row shows the
+/// topic's name and the groups inside it; clicking it (or Return / Space)
+/// opens it, ↑ / ↓ move between rows.
 final class SettingsOverview: NSView {
     struct Topic {
         let title: String       // English: the key into Localizable.strings
@@ -11,64 +11,110 @@ final class SettingsOverview: NSView {
         let detail: String      // already localised
     }
 
-    static let columns = 3
+    static let maxWidth: CGFloat = 720
     var onPick: ((Int) -> Void)?
-    private(set) var cards: [SettingsTopicCard] = []
+    private(set) var rows: [SettingsTopicRow] = []
 
     init(topics: [Topic]) {
         super.init(frame: .zero)
         translatesAutoresizingMaskIntoConstraints = false
-        let grid = NSStackView()
-        grid.orientation = .vertical
-        grid.spacing = 14
-        grid.translatesAutoresizingMaskIntoConstraints = false
-        cards = topics.enumerated().map { index, topic in
-            let card = SettingsTopicCard(topic)
-            card.onPick = { [weak self] in self?.onPick?(index) }
-            card.onArrow = { [weak self] dx, dy in self?.move(from: index, dx: dx, dy: dy) }
-            return card
+        let group = NSStackView()
+        group.orientation = .vertical
+        group.spacing = 0
+        group.wantsLayer = true
+        group.layer?.cornerRadius = 14
+        group.layer?.backgroundColor = NSColor(white: 1, alpha: 0.045).cgColor
+        group.layer?.borderColor = NSColor(white: 1, alpha: 0.08).cgColor
+        group.layer?.borderWidth = 1
+        group.edgeInsets = NSEdgeInsets(top: 6, left: 6, bottom: 6, right: 6)
+        group.translatesAutoresizingMaskIntoConstraints = false
+        rows = topics.enumerated().map { index, topic in
+            let row = SettingsTopicRow(topic)
+            row.onPick = { [weak self] in self?.onPick?(index) }
+            row.onArrow = { [weak self] step in self?.move(from: index, by: step) }
+            return row
         }
-        for start in stride(from: 0, to: cards.count, by: Self.columns) {
-            var line: [NSView] = Array(cards[start..<min(start + Self.columns, cards.count)])
-            while line.count < Self.columns { line.append(NSView()) }
-            let row = NSStackView(views: line)
-            row.distribution = .fillEqually
-            row.spacing = 14
-            grid.addArrangedSubview(row)
-            row.widthAnchor.constraint(equalTo: grid.widthAnchor).isActive = true
+        for (index, row) in rows.enumerated() {
+            if index > 0 {
+                let rule = Hairline()
+                group.addArrangedSubview(rule)
+                rule.leadingAnchor.constraint(equalTo: group.leadingAnchor, constant: 54).isActive = true
+                rule.trailingAnchor.constraint(equalTo: group.trailingAnchor, constant: -16).isActive = true
+            }
+            group.addArrangedSubview(row)
+            row.leadingAnchor.constraint(equalTo: group.leadingAnchor, constant: 6).isActive = true
+            row.trailingAnchor.constraint(equalTo: group.trailingAnchor, constant: -6).isActive = true
         }
-        addSubview(grid)
+
+        // Taller than the window: the list scrolls.
+        let document = FlippedView()
+        document.translatesAutoresizingMaskIntoConstraints = false
+        document.addSubview(group)
+        let scroll = NSScrollView()
+        scroll.documentView = document
+        scroll.drawsBackground = false
+        scroll.hasVerticalScroller = true
+        scroll.autohidesScrollers = true
+        scroll.scrollerStyle = .overlay
+        scroll.translatesAutoresizingMaskIntoConstraints = false
+        addSubview(scroll)
+        let clip = scroll.contentView
+        let wide = group.widthAnchor.constraint(equalTo: document.widthAnchor)
+        wide.priority = .defaultHigh
         NSLayoutConstraint.activate([
-            grid.topAnchor.constraint(equalTo: topAnchor),
-            grid.leadingAnchor.constraint(equalTo: leadingAnchor),
-            grid.trailingAnchor.constraint(equalTo: trailingAnchor),
-            grid.bottomAnchor.constraint(lessThanOrEqualTo: bottomAnchor)
+            scroll.topAnchor.constraint(equalTo: topAnchor),
+            scroll.leadingAnchor.constraint(equalTo: leadingAnchor),
+            scroll.trailingAnchor.constraint(equalTo: trailingAnchor),
+            scroll.bottomAnchor.constraint(equalTo: bottomAnchor),
+            document.topAnchor.constraint(equalTo: clip.topAnchor),
+            document.leadingAnchor.constraint(equalTo: clip.leadingAnchor),
+            document.widthAnchor.constraint(equalTo: clip.widthAnchor),
+            group.topAnchor.constraint(equalTo: document.topAnchor),
+            group.leadingAnchor.constraint(equalTo: document.leadingAnchor),
+            group.bottomAnchor.constraint(equalTo: document.bottomAnchor, constant: -8),
+            group.widthAnchor.constraint(lessThanOrEqualToConstant: Self.maxWidth),
+            wide
         ])
     }
 
     @available(*, unavailable)
     required init?(coder: NSCoder) { fatalError() }
 
-    private func move(from index: Int, dx: Int, dy: Int) {
-        let next = index + dx + dy * Self.columns
-        guard next >= 0, next < cards.count, dx == 0 || next / Self.columns == index / Self.columns else { return }
-        window?.makeFirstResponder(cards[next])
+    private func move(from index: Int, by step: Int) {
+        let next = index + step
+        guard next >= 0, next < rows.count else { return }
+        window?.makeFirstResponder(rows[next])
+        rows[next].scrollToVisible(rows[next].bounds)
     }
 
-    /// The cards fade up one after another (Reduce Motion: all at once).
+    /// The rows fade down into place one after another (Reduce Motion: all at once).
     func animateIn() {
-        for (index, card) in cards.enumerated() {
-            let delay = MainWindowMotion.reduceMotion ? 0 : Double(index) * 0.025
-            MainWindowMotion.arrive(card.layer, dx: 0, dy: -10, duration: MainWindowMotion.pageDuration + 0.06, delay: delay)
+        for (index, row) in rows.enumerated() {
+            let delay = MainWindowMotion.reduceMotion ? 0 : Double(index) * 0.02
+            MainWindowMotion.arrive(row.layer, dx: 0, dy: -6, duration: MainWindowMotion.pageDuration, delay: delay)
         }
     }
 }
 
-/// One topic on the overview.
-final class SettingsTopicCard: FocusButton {
-    static let height: CGFloat = 108
+/// A 1 pt rule between rows.
+private final class Hairline: NSView {
+    override init(frame: NSRect) {
+        super.init(frame: frame)
+        wantsLayer = true
+        layer?.backgroundColor = NSColor(white: 1, alpha: 0.07).cgColor
+        translatesAutoresizingMaskIntoConstraints = false
+        heightAnchor.constraint(equalToConstant: 1).isActive = true
+    }
+
+    @available(*, unavailable)
+    required init?(coder: NSCoder) { fatalError() }
+}
+
+/// One topic in the overview list.
+final class SettingsTopicRow: FocusButton {
+    static let height: CGFloat = 52
     var onPick: (() -> Void)?
-    var onArrow: ((Int, Int) -> Void)?
+    var onArrow: ((Int) -> Void)?
     let topicTitle: String
     private let tint: NSColor
     private var hovering = false { didSet { if hovering != oldValue { restyle() } } }
@@ -82,21 +128,20 @@ final class SettingsTopicCard: FocusButton {
         isBordered = false
         setButtonType(.momentaryChange)
         wantsLayer = true
-        layer?.cornerRadius = 14
-        layer?.borderWidth = 1
+        layer?.cornerRadius = 9
         translatesAutoresizingMaskIntoConstraints = false
         setAccessibilityTitle(L(topic.title))
+        setAccessibilityHelp(topic.detail)
         target = self
         action = #selector(fire)
 
-        let badge = BadgeView(symbol: topic.symbol, tint: topic.tint, side: 34)
+        let badge = BadgeView(symbol: topic.symbol, tint: topic.tint, side: 26)
         let name = NSTextField(labelWithString: L(topic.title))
-        name.font = .systemFont(ofSize: 15, weight: .semibold)
+        name.font = .systemFont(ofSize: 14, weight: .semibold)
         name.textColor = .white
-        let detail = NSTextField(wrappingLabelWithString: topic.detail)
+        let detail = NSTextField(labelWithString: topic.detail)
         detail.font = .systemFont(ofSize: 11.5)
-        detail.textColor = NSColor(white: 1, alpha: 0.5)
-        detail.maximumNumberOfLines = 2
+        detail.textColor = NSColor(white: 1, alpha: 0.48)
         detail.lineBreakMode = .byTruncatingTail
         detail.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
         let chevron = NSImageView(image: NSImage(systemSymbolName: "chevron.right", accessibilityDescription: nil)?
@@ -107,20 +152,19 @@ final class SettingsTopicCard: FocusButton {
             addSubview(view)
         }
         NSLayoutConstraint.activate([
-            // Room for the badge row and two lines of groups.
             heightAnchor.constraint(equalToConstant: Self.height),
-            badge.leadingAnchor.constraint(equalTo: leadingAnchor, constant: 16),
-            badge.topAnchor.constraint(equalTo: topAnchor, constant: 16),
-            badge.widthAnchor.constraint(equalToConstant: 34),
-            badge.heightAnchor.constraint(equalToConstant: 34),
-            chevron.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -16),
-            chevron.centerYAnchor.constraint(equalTo: badge.centerYAnchor),
+            badge.leadingAnchor.constraint(equalTo: leadingAnchor, constant: 10),
+            badge.centerYAnchor.constraint(equalTo: centerYAnchor),
+            badge.widthAnchor.constraint(equalToConstant: 26),
+            badge.heightAnchor.constraint(equalToConstant: 26),
             name.leadingAnchor.constraint(equalTo: badge.trailingAnchor, constant: 12),
-            name.centerYAnchor.constraint(equalTo: badge.centerYAnchor),
-            name.trailingAnchor.constraint(lessThanOrEqualTo: chevron.leadingAnchor, constant: -8),
-            detail.leadingAnchor.constraint(equalTo: badge.leadingAnchor),
-            detail.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -16),
-            detail.topAnchor.constraint(equalTo: badge.bottomAnchor, constant: 12)
+            name.bottomAnchor.constraint(equalTo: centerYAnchor, constant: 1),
+            detail.leadingAnchor.constraint(equalTo: name.leadingAnchor),
+            detail.topAnchor.constraint(equalTo: centerYAnchor, constant: 2),
+            detail.trailingAnchor.constraint(lessThanOrEqualTo: chevron.leadingAnchor, constant: -12),
+            name.trailingAnchor.constraint(lessThanOrEqualTo: chevron.leadingAnchor, constant: -12),
+            chevron.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -14),
+            chevron.centerYAnchor.constraint(equalTo: centerYAnchor)
         ])
         restyle()
     }
@@ -138,11 +182,9 @@ final class SettingsTopicCard: FocusButton {
     @objc private func fire() { onPick?() }
 
     private func restyle() {
-        let lit = hovering || focused
-        layer?.backgroundColor = NSColor(white: 1, alpha: lit ? 0.085 : 0.045).cgColor
-        layer?.borderColor = (focused ? tint.withAlphaComponent(0.85)
-                              : hovering ? tint.withAlphaComponent(0.45) : NSColor(white: 1, alpha: 0.08)).cgColor
-        layer?.borderWidth = focused ? 2 : 1
+        layer?.backgroundColor = NSColor(white: 1, alpha: focused ? 0.09 : hovering ? 0.06 : 0).cgColor
+        layer?.borderColor = tint.withAlphaComponent(0.85).cgColor
+        layer?.borderWidth = focused ? 1.5 : 0
     }
 
     override func updateTrackingAreas() {
@@ -155,24 +197,13 @@ final class SettingsTopicCard: FocusButton {
     override func mouseEntered(with event: NSEvent) { hovering = true }
     override func mouseExited(with event: NSEvent) { hovering = false }
 
-    // Pressed: the card gives a little (transform only).
+    // Pressed: the row dims for a moment (opacity only).
     override func mouseDown(with event: NSEvent) {
-        press(true)
+        layer?.opacity = 0.7
         super.mouseDown(with: event)
-        press(false)
-    }
-
-    private func press(_ down: Bool) {
-        guard let layer, !MainWindowMotion.reduceMotion else { return }
-        let scale = down ? 0.975 : 1
-        // Scale about the centre (the layer's anchor is its corner).
-        let box = layer.bounds
-        var transform = CATransform3DMakeTranslation(box.midX, box.midY, 0)
-        transform = CATransform3DScale(transform, scale, scale, 1)
-        transform = CATransform3DTranslate(transform, -box.midX, -box.midY, 0)
         CATransaction.begin()
-        CATransaction.setAnimationDuration(down ? 0.08 : 0.18)
-        layer.transform = down ? transform : CATransform3DIdentity
+        CATransaction.setAnimationDuration(0.18)
+        layer?.opacity = 1
         CATransaction.commit()
     }
 
@@ -188,15 +219,13 @@ final class SettingsTopicCard: FocusButton {
         return resigned
     }
 
-    // Our own ring (the border) instead of the system's.
+    // Our own ring (the tinted border) instead of the system's.
     override var focusRingType: NSFocusRingType { get { .none } set {} }
 
     override func keyDown(with event: NSEvent) {
         switch event.keyCode {
-        case 123: onArrow?(-1, 0)
-        case 124: onArrow?(1, 0)
-        case 125: onArrow?(0, 1)
-        case 126: onArrow?(0, -1)
+        case 125: onArrow?(1)
+        case 126: onArrow?(-1)
         default: super.keyDown(with: event)
         }
     }

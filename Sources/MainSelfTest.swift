@@ -2,7 +2,8 @@ import AppKit
 
 /// Checks of the main window and the trimmed card (`OmniHub --main-selftest
 /// [dir]`): which pages the card keeps, every page laid out in the window,
-/// pages handed between card and window, and Settings' category column.
+/// pages handed between card and window, Settings' topic list and the
+/// terminal's Downloads button.
 /// With a folder, a picture of each page is saved there.
 enum MainSelfTest {
     private static var failures = 0
@@ -26,6 +27,7 @@ enum MainSelfTest {
         pages(pictures: pictures)
         sharing()
         settings(pictures: pictures)
+        transferButton()
 
         for (key, value) in saved { Prefs.set(key, value) }
         print(failures == 0 ? "RESULT: all passed" : "RESULT: \(failures) failed")
@@ -89,16 +91,12 @@ enum MainSelfTest {
             }
         }
 
-        // Settings takes the whole window, with Back to the page before it.
+        // Settings keeps the page list; Back only inside a topic.
         _ = MainWindow.debugOpen(.activity)
         let settingsWindow = MainWindow.debugOpen(.settings)
         let settingsLeft = settingsWindow.debugHost.convert(settingsWindow.debugHost.bounds, to: nil).minX
-        check("settings: no page list, Back shown, the settings start at the left edge (x \(Int(settingsLeft)))",
-              !settingsWindow.debugListShown && settingsWindow.debugBackShown && settingsLeft < 40)
-        settingsWindow.debugBack()
-        let afterBack = settingsWindow.page
-        check("Back returns to the page before Settings (\(afterBack.rawValue)), with the list again",
-              afterBack == .activity && settingsWindow.debugListShown && !settingsWindow.debugBackShown)
+        check("settings: the page list stays, no Back on the list of topics (content at x \(Int(settingsLeft)))",
+              settingsWindow.debugListShown && !settingsWindow.debugBackShown && settingsLeft > 200)
         let small = MainWindow.debugOpen(.settings, size: NSSize(width: 860, height: 540))
         let host = small.debugHost.bounds.size
         check("settings at the smallest window: fills \(Int(host.width))×\(Int(host.height))",
@@ -158,13 +156,13 @@ enum MainSelfTest {
             return
         }
         settle()
-        let cards = overview.cards.map { $0.convert($0.bounds, to: nil) }
-        let columns = Set(cards.map { Int($0.minX) }).count
-        let rows = Set(cards.map { Int($0.minY) }).count
-        check("overview: \(cards.count) topics in \(columns) columns × \(rows) rows, none empty",
-              cards.count == pane.tabCount && columns == SettingsOverview.columns
-                && rows == (cards.count + columns - 1) / columns && cards.allSatisfy { $0.width > 150 && $0.height > 80 })
-        overview.cards[2].performClick(nil)
+        let rows = overview.rows.map { $0.convert($0.bounds, to: nil) }
+        check("overview: the \(rows.count) topics as one list, top to bottom",
+              rows.count == pane.tabCount && Set(rows.map { Int($0.minX) }).count == 1
+                && zip(rows, rows.dropFirst()).allSatisfy { $0.0.minY > $0.1.minY }
+                && rows.allSatisfy { $0.width > 400 && $0.height == SettingsTopicRow.height },
+              "\(rows.map { "\(Int($0.minX)),\(Int($0.minY)) \(Int($0.width))" })")
+        overview.rows[2].performClick(nil)
         check("clicking a topic opens it (\(window.debugTitle))",
               pane.selectedTab == 2 && !pane.isOverview && window.debugTitle == L("Screenshot"))
         pane.select(tab: 6)
@@ -183,14 +181,40 @@ enum MainSelfTest {
         pane.select(tab: 6)
         _ = pane.debugScrollToBottom()
         window.debugBack()
-        window.debugBack()
-        check("Back from the overview: the page before Settings", window.page == .activity && !window.debugBackShown)
+        check("Back from a topic: the list again, Back gone, the page list still there",
+              pane.isOverview && !window.debugBackShown && window.debugListShown)
+        window.debugPick(.activity)
+        check("leaving Settings through the page list", window.page == .activity)
         pane.select(tab: 6)
         _ = MainWindow.debugOpen(.settings)
         check("entering Settings again starts at the overview", pane.isOverview && window.debugTitle == L("Settings"))
         pane.select(tab: 6)
         check("a topic opens at its top", pane.debugScrollOffset == 0, "offset \(pane.debugScrollOffset)")
         pane.showOverview()
+    }
+
+    /// The terminal's Downloads button: a ring that fills, a spinner while
+    /// the size is unknown, a tick when done, then the plain icon again.
+    private static func transferButton() {
+        let button = TransferProgressButton(target: nil, action: nil, label: "Recent Downloads")
+        button.doneDuration = 0.2
+        button.frame = NSRect(x: 0, y: 0, width: 24, height: 22)
+        button.layout()
+        let moving = !MainWindowMotion.reduceMotion
+        let idle = button.debugState
+        button.update(running: true, fraction: nil)
+        let unknown = button.debugState
+        button.update(running: true, fraction: 0.42)
+        let known = button.debugState
+        button.update(running: false, fraction: nil)
+        let done = button.debugState
+        RunLoop.main.run(until: Date().addingTimeInterval(0.4))
+        let after = button.debugState
+        check("downloads button: \(idle) → \(unknown) → \(known) → \(done) → \(after)",
+              idle.hasPrefix("idle fill=0.00")
+                && unknown.hasPrefix("running(nil)") && (!moving || unknown.contains("spin+bob"))
+                && known.hasPrefix("running(Optional(0.42)) fill=0.42") && !known.contains("spin")
+                && done.hasPrefix("done fill=1.00") && !done.contains("bob") && after.hasPrefix("idle"))
     }
 
     private static func snapshot(_ window: NSWindow, to url: URL) {

@@ -60,6 +60,7 @@ SOURCES=(
   Sources/TerminalSession.swift
   Sources/TerminalCursor.swift
   Sources/TerminalPane.swift
+  Sources/TransferProgressButton.swift
   Sources/TerminalSettingsView.swift
   Sources/ConnectionStore.swift
   Sources/VaultSelfTest.swift
