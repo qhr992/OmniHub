@@ -159,10 +159,15 @@ enum DockSelfTest {
             return FloatingDockPanel.debugTicker()
         }
         let first = at(12), held = at(20), second = at(40), later = at(120)
+        // In place half a second before it is sung: the roll starts that much plus its own length early.
+        let early = MarqueeLabel.rollDuration + LyricsProvider.lead
+        let notYet = at(25 - early - 0.4), rolling = at(25 - early + 0.05)
         check("pill line: the song before the first lyric, then each lyric held until the next (through a blank line) "
               + "(\(start.text) → \(first.text) → \(held.text) → \(second.text) → \(later.text))",
               start.text == "Ticker Song — Tester" && first.text == "First line" && held.text == "First line"
                 && second.text == "Second line" && later.text == "Second line")
+        check("pill line: the next lyric starts rolling \(early) s before it is sung (\(notYet.text) → \(rolling.text))",
+              notYet.text == "First line" && rolling.text == "Second line")
         check("pill line: each new line rolls in, slowly (\(start.rolls) → \(first.rolls) → \(second.rolls), \(MarqueeLabel.rollDuration) s)",
               first.rolls == start.rolls + 1 && held.rolls == first.rolls && second.rolls == first.rolls + 1
                 && later.rolls == second.rolls && MarqueeLabel.rollDuration >= 1)

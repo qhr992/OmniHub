@@ -57,6 +57,9 @@ final class LyricsProvider {
         cache[key(title, artist, duration)] = lines
     }
 
+    /// A line shows this long before it is sung, so it never lags the voice.
+    static let lead: Double = 0.5
+
     /// The line being sung at `position`.
     static func current(in lines: [Line], at position: Double) -> String? {
         var result: String?

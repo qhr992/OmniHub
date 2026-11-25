@@ -261,7 +261,7 @@ final class NowPlayingTile: HomeTile {
         progress.fraction = position.map { item.duration > 0 ? $0 / item.duration : 0 } ?? 0
         elapsed.stringValue = position.map { "\(Self.time($0)) / \(Self.time(item.duration))" } ?? ""
         let lines = LyricsProvider.shared.lines(title: item.title, artist: item.artist, duration: item.duration) ?? []
-        let line = position.flatMap { now in lines.last { $0.time <= now }?.text } ?? ""
+        let line = position.flatMap { now in LyricsProvider.current(in: lines, at: now + LyricsProvider.lead) } ?? ""
         lyric.stringValue = line
         lyric.isHidden = line.isEmpty
     }

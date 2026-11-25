@@ -938,10 +938,12 @@ final class FloatingDockPanel: NSPanel, EscDismissable {
         if mediaStyle == 1, let position,
            let lines = LyricsProvider.shared.lines(title: media.title, artist: media.artist,
                                                          duration: media.duration) {
-            line = LyricsProvider.current(in: lines, at: position) ?? ""
-            // Through a blank line (a break in the singing) the pill keeps the last one sung.
+            line = LyricsProvider.current(in: lines, at: position + LyricsProvider.lead) ?? ""
+            // Through a blank line (a break in the singing) the pill keeps the
+            // last one sung. Its roll starts early enough to be in place
+            // `lead` seconds before the line is sung.
             sung = LyricsProvider.current(in: lines.filter { !$0.text.trimmingCharacters(in: .whitespaces).isEmpty },
-                                          at: position) ?? ""
+                                          at: position + LyricsProvider.lead + MarqueeLabel.rollDuration) ?? ""
         }
         // The lyric being sung stays until the next one; the song shows only
         // while there is no line (before the first one, or no lyrics).
