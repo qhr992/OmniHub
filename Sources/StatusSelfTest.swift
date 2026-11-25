@@ -466,13 +466,14 @@ enum StatusSelfTest {
 
         SystemStats.shared.loadOnce {}
         let panel = MenuBarPanel.debugContent()
-        wait(3) { panel.debugText.contains("CPU=") && !panel.debugText.contains("CPU=–") }
+        wait(5) { panel.debugText.contains("samples=2") || panel.debugText.contains("samples=3") }
         let text = panel.debugText
-        check("menu bar panel: player, then CPU, memory, disk, battery and network: \(text)",
-              text.hasPrefix("playing=") && text.contains("CPU=") && text.contains("Memory=") && text.contains("Disk=")
-                && text.contains("net=↑") && (text.contains("Battery=") || BatteryInfo.read() == nil))
+        check("menu bar panel: player, then CPU, memory, GPU, disk, network (and battery) with charts: \(text)",
+              text.hasPrefix("playing=") && text.contains("cpu=") && !text.contains("cpu=—") && text.contains("memory=")
+                && text.contains("disk=") && text.contains("network=↓") && !text.contains("samples=0")
+                && (text.contains("battery=") || BatteryInfo.read() == nil))
         check("menu bar panel: \(MenuBarPanelView.width) wide, \(panel.fittingSize.height) high",
-              panel.fittingSize.height > 250 && panel.fittingSize.height < 700)
+              panel.fittingSize.height > 300 && panel.fittingSize.height < 760)
         MenuBarPanel.debugDidHide()
     }
 

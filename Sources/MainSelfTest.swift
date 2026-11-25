@@ -28,6 +28,7 @@ enum MainSelfTest {
         sharing()
         settings(pictures: pictures)
         transferButton()
+        screenPlacement()
 
         for (key, value) in saved { Prefs.set(key, value) }
         print(failures == 0 ? "RESULT: all passed" : "RESULT: \(failures) failed")
@@ -191,6 +192,17 @@ enum MainSelfTest {
         pane.select(tab: 6)
         check("a topic opens at its top", pane.debugScrollOffset == 0, "offset \(pane.debugScrollOffset)")
         pane.showOverview()
+    }
+
+    /// The window comes to the screen in use, its size kept but never
+    /// larger than that screen.
+    private static func screenPlacement() {
+        let area = NSRect(x: 1440, y: 434, width: 2560, height: 1415)
+        let placed = MainWindow.frame(NSSize(width: 1080, height: 700), centredIn: area)
+        let squeezed = MainWindow.frame(NSSize(width: 1600, height: 1000), centredIn: NSRect(x: 0, y: 0, width: 1440, height: 875))
+        check("main window placed on the pointer's screen: \(placed), \(squeezed)",
+              area.contains(placed) && placed.size == NSSize(width: 1080, height: 700)
+                && abs(placed.midX - area.midX) <= 1 && squeezed.size == NSSize(width: 1440, height: 875))
     }
 
     /// The terminal's Downloads button: a ring that fills, a spinner while

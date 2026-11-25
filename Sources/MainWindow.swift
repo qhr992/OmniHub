@@ -222,9 +222,26 @@ final class MainWindow: NSWindow, NSWindowDelegate {
         // An ordinary window: a Dock icon and ⌘-Tab while it is open.
         if NSApp.activationPolicy() != .regular { NSApp.setActivationPolicy(.regular) }
         FocusKeeper.activateSelf()
+        moveToPointerScreen()
         makeKeyAndOrderFront(nil)
         if !wasOpen { NotificationCenter.default.post(name: .mainWindowChanged, object: self) }
         if let responder = (shown as? DockPage)?.initialResponder { makeFirstResponder(responder) }
+    }
+
+    /// The window opens on the screen in use (the one under the pointer):
+    /// on another screen it moves over, keeping its size, centred.
+    private func moveToPointerScreen() {
+        let pointer = NSEvent.mouseLocation
+        guard let target = NSScreen.screens.first(where: { NSMouseInRect(pointer, $0.frame, false) }),
+              target != screen else { return }
+        setFrame(Self.frame(frame.size, centredIn: target.visibleFrame), display: false)
+    }
+
+    /// `size` (no larger than `area`) centred in `area`.
+    static func frame(_ size: NSSize, centredIn area: NSRect) -> NSRect {
+        let width = min(size.width, area.width), height = min(size.height, area.height)
+        return NSRect(x: (area.midX - width / 2).rounded(), y: (area.midY - height / 2).rounded(),
+                      width: width, height: height)
     }
 
     /// Puts the current page's view into the window, taking it from the card.

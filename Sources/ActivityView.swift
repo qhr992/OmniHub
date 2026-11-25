@@ -48,7 +48,7 @@ final class ActivityView: NSView {
     private(set) var debugRows: [String] = []
 
     private static let accent = NSColor(srgbRed: 0.45, green: 0.85, blue: 1.0, alpha: 1)
-    private static let palette: [String: NSColor] = [
+    static let palette: [String: NSColor] = [
         "cpu": NSColor(srgbRed: 0.45, green: 0.85, blue: 1.0, alpha: 1),
         "gpu": NSColor(srgbRed: 0.72, green: 0.62, blue: 1.0, alpha: 1),
         "memory": NSColor(srgbRed: 0.45, green: 0.92, blue: 0.62, alpha: 1),
@@ -285,6 +285,8 @@ final class MetricTile: NSView {
     required init?(coder: NSCoder) { fatalError() }
 
     /// `ceiling` nil = scale the chart to its own highest sample.
+    var debugValue: String { valueLabel.stringValue }
+
     func update(value: String, detail: String, samples: [Double], ceiling: Double?) {
         valueLabel.stringValue = value
         detailLabel.stringValue = detail

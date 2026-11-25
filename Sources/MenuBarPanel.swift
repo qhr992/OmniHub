@@ -1,8 +1,9 @@
 import AppKit
 
 /// A left click on the menu bar icon: a panel drops down with the player on
-/// top and the system's load listed below (CPU, memory, GPU, disk, battery,
-/// network, Keep Awake), ending in a way into the dashboard.
+/// top and the system below as on the Activity page (Keep Awake, then CPU,
+/// memory, GPU, disk, network and battery with their charts), ending in a
+/// way into the dashboard.
 final class MenuBarPanel: NSObject, NSPopoverDelegate {
     static let shared = MenuBarPanel()
 
@@ -55,7 +56,7 @@ final class MenuBarPanelView: NSView {
     static let width: CGFloat = 384
 
     private let playing = NowPlayingTile()
-    private let system = SystemListTile()
+    private let system = PanelMetrics(width: MenuBarPanelView.width - 24)
     private var timer: Timer?
 
     init() {
@@ -82,7 +83,6 @@ final class MenuBarPanelView: NSView {
             stack.trailingAnchor.constraint(equalTo: trailingAnchor),
             stack.bottomAnchor.constraint(equalTo: bottomAnchor),
             playing.widthAnchor.constraint(equalTo: stack.widthAnchor, constant: -24),
-            system.widthAnchor.constraint(equalTo: stack.widthAnchor, constant: -24),
             footer.widthAnchor.constraint(equalTo: stack.widthAnchor, constant: -40)
         ])
         let center = NotificationCenter.default
@@ -90,6 +90,7 @@ final class MenuBarPanelView: NSView {
         center.addObserver(self, selector: #selector(mediaChanged), name: .lyricsChanged, object: nil)
         center.addObserver(self, selector: #selector(statsChanged), name: .activityChanged, object: nil)
         center.addObserver(self, selector: #selector(statsChanged), name: .keepAwakeChanged, object: nil)
+        center.addObserver(self, selector: #selector(statsChanged), name: .settingsChanged, object: nil)
     }
 
     @available(*, unavailable)
@@ -119,123 +120,71 @@ final class MenuBarPanelView: NSView {
     var debugText: String { "playing=\(playing.debugText) \(system.debugText)" }
 }
 
-/// The system's load as a list: a bar and a figure per line.
-final class SystemListTile: HomeTile {
-    private let cpu = LoadRow("CPU", tint: StatusIcon.Tint.cpu)
-    private let memory = LoadRow("Memory", tint: StatusIcon.Tint.memory)
-    private let gpu = LoadRow("GPU", tint: SettingsSection.Tint.purple)
-    private let disk = LoadRow("Disk", tint: StatusIcon.Tint.disk)
-    private let battery = LoadRow("Battery", tint: .white)
-    private let network = NSTextField(labelWithString: "")
-    private lazy var awake = HomeLink("", symbol: KeepAwake.symbolName) { [weak self] in self?.awakeMenu() }
+/// The system as on the Activity page: Keep Awake, then CPU, memory, GPU,
+/// disk, network and battery as tiles with their recent history drawn.
+final class PanelMetrics: NSStackView {
+    private static let gap: CGFloat = 8
+    private let keepAwake = KeepAwakeRow()
+    private var tiles: [String: MetricTile] = [:]
+    private let battery = BatteryTile()
 
-    init() {
-        super.init(title: "System", symbol: "gauge.with.dots.needle.67percent", tint: SettingsSection.Tint.green)
-        content.spacing = 8
-        for row in [cpu, memory, gpu, disk, battery] {
-            content.addArrangedSubview(row)
-            row.widthAnchor.constraint(equalTo: content.widthAnchor).isActive = true
-        }
-        network.font = .monospacedDigitSystemFont(ofSize: 12, weight: .medium)
-        network.textColor = NSColor(white: 1, alpha: 0.75)
-        let line = NSStackView(views: [network, NSView(), awake])
-        content.addArrangedSubview(line)
-        line.widthAnchor.constraint(equalTo: content.widthAnchor).isActive = true
-    }
-
-    func update() {
-        let stats = SystemStats.shared.snapshot
-        cpu.set(stats.cpu)
-        memory.set(stats.memoryTotal > 0 ? Double(stats.memoryUsed) / Double(stats.memoryTotal) : nil,
-                   detail: stats.memoryTotal > 0 ? "\(SystemStats.bytes(Int64(stats.memoryUsed))) / \(SystemStats.bytes(Int64(stats.memoryTotal)))" : nil)
-        gpu.set(stats.gpu)
-        gpu.isHidden = stats.gpu == nil
-        disk.set(stats.diskTotal > 0 ? Double(stats.diskUsed) / Double(stats.diskTotal) : nil)
-        let info = stats.battery ?? BatteryInfo.read()
-        battery.isHidden = info == nil
-        if let info {
-            battery.tint = StatusIcon.batteryTint(info) ?? .white
-            battery.set(Double(info.percent) / 100, detail: info.stateText)
-        }
-        network.stringValue = "↑ \(SystemStats.rate(stats.netOut))   ↓ \(SystemStats.rate(stats.netIn))"
-        let on = KeepAwake.shared.isOn
-        let colour = on ? StatusIcon.Tint.awake : NSColor(white: 1, alpha: 0.5)
-        let title = NSMutableAttributedString(attributedString: HomeLink.symbol(KeepAwake.symbolName, size: 11, color: colour))
-        title.append(NSAttributedString(string: " " + (on ? KeepAwake.shared.statusText : L("Keep Awake")),
-                                        attributes: [.font: NSFont.systemFont(ofSize: 12, weight: .medium),
-                                                     .foregroundColor: colour]))
-        awake.attributedTitle = title
-    }
-
-    private func awakeMenu() {
-        let menu = KeepAwake.shared.menu(target: self, action: #selector(awakePicked(_:)))
-        menu.popUp(positioning: nil, at: NSPoint(x: 0, y: awake.bounds.height + 4), in: awake)
-    }
-
-    @objc private func awakePicked(_ sender: NSMenuItem) {
-        KeepAwake.shared.choose(sender.tag < 0 ? nil : sender.tag)
-    }
-
-    var debugText: String {
-        [cpu, memory, gpu, disk, battery].filter { !$0.isHidden }.map(\.debugText).joined(separator: " ")
-            + " net=\(network.stringValue)"
-    }
-}
-
-/// "CPU  ▇▇▇▇▁▁▁  41 %" with an optional detail under the bar.
-final class LoadRow: NSView {
-    private let name: NSTextField
-    private let bar = LevelBar()
-    private let figure = NSTextField(labelWithString: "–")
-    private let detail = NSTextField(labelWithString: "")
-    var tint: NSColor {
-        get { bar.tint }
-        set { bar.tint = newValue }
-    }
-
-    init(_ title: String, tint: NSColor) {
-        name = NSTextField(labelWithString: L(title))
+    init(width: CGFloat) {
         super.init(frame: .zero)
-        bar.tint = tint
-        name.font = .systemFont(ofSize: 12, weight: .medium)
-        name.textColor = NSColor(white: 1, alpha: 0.8)
-        figure.font = .monospacedDigitSystemFont(ofSize: 12, weight: .semibold)
-        figure.textColor = .white
-        figure.alignment = .right
-        detail.font = .systemFont(ofSize: 10)
-        detail.textColor = NSColor(white: 1, alpha: 0.45)
+        orientation = .vertical
+        alignment = .leading
+        spacing = Self.gap
         translatesAutoresizingMaskIntoConstraints = false
-        for view in [name, bar, figure, detail] as [NSView] {
-            view.translatesAutoresizingMaskIntoConstraints = false
-            addSubview(view)
+        let tileWidth = (width - Self.gap) / 2
+        addArrangedSubview(keepAwake)
+        keepAwake.widthAnchor.constraint(equalToConstant: width).isActive = true
+        let titles: [(String, String, String)] = [("cpu", "cpu", "CPU"), ("memory", "memorychip", "Memory"),
+                                                  ("gpu", "cube.transparent", "GPU"), ("disk", "internaldrive", "Disk"),
+                                                  ("network", "arrow.up.arrow.down", "Network")]
+        var cells: [NSView] = titles.map { key, symbol, title in
+            let tile = MetricTile(symbol: symbol, title: L(title), tint: ActivityView.palette[key] ?? .white)
+            tiles[key] = tile
+            return tile
         }
-        NSLayoutConstraint.activate([
-            name.leadingAnchor.constraint(equalTo: leadingAnchor),
-            name.topAnchor.constraint(equalTo: topAnchor),
-            name.widthAnchor.constraint(equalToConstant: 64),
-            bar.leadingAnchor.constraint(equalTo: name.trailingAnchor, constant: 6),
-            bar.centerYAnchor.constraint(equalTo: name.centerYAnchor),
-            bar.heightAnchor.constraint(equalToConstant: 6),
-            figure.leadingAnchor.constraint(equalTo: bar.trailingAnchor, constant: 10),
-            figure.trailingAnchor.constraint(equalTo: trailingAnchor),
-            figure.centerYAnchor.constraint(equalTo: name.centerYAnchor),
-            figure.widthAnchor.constraint(equalToConstant: 42),
-            detail.leadingAnchor.constraint(equalTo: bar.leadingAnchor),
-            detail.topAnchor.constraint(equalTo: name.bottomAnchor, constant: 1),
-            detail.trailingAnchor.constraint(lessThanOrEqualTo: trailingAnchor),
-            bottomAnchor.constraint(equalTo: detail.bottomAnchor)
-        ])
+        cells.append(battery)
+        for start in stride(from: 0, to: cells.count, by: 2) {
+            let row = NSStackView(views: Array(cells[start..<min(start + 2, cells.count)]))
+            row.spacing = Self.gap
+            for cell in row.arrangedSubviews { cell.widthAnchor.constraint(equalToConstant: tileWidth).isActive = true }
+            addArrangedSubview(row)
+        }
     }
 
     @available(*, unavailable)
     required init?(coder: NSCoder) { fatalError() }
 
-    func set(_ value: Double?, detail text: String? = nil) {
-        bar.level = value ?? 0
-        figure.stringValue = value.map { "\(Int(($0 * 100).rounded())) %" } ?? "–"
-        detail.stringValue = text ?? ""
-        detail.isHidden = (text ?? "").isEmpty
+    func update() {
+        let stats = SystemStats.shared.snapshot
+        let history = SystemStats.shared.history
+        func percent(_ value: Double?) -> String { value.map { String(format: "%.0f%%", $0 * 100) } ?? "—" }
+        keepAwake.sync()
+        tiles["cpu"]?.update(value: percent(stats.cpu),
+                             detail: L("%ld cores", ProcessInfo.processInfo.activeProcessorCount),
+                             samples: history.cpu, ceiling: 1)
+        let memory = stats.memoryTotal > 0 ? Double(stats.memoryUsed) / Double(stats.memoryTotal) : nil
+        tiles["memory"]?.update(value: percent(memory),
+                                detail: stats.memoryTotal > 0
+                                    ? "\(SystemStats.bytes(Int64(stats.memoryUsed))) / \(SystemStats.bytes(Int64(stats.memoryTotal)))" : "",
+                                samples: history.memory, ceiling: 1)
+        tiles["gpu"]?.update(value: percent(stats.gpu), detail: "", samples: history.gpu, ceiling: 1)
+        let disk = stats.diskTotal > 0 ? Double(stats.diskUsed) / Double(stats.diskTotal) : nil
+        tiles["disk"]?.update(value: percent(disk),
+                              detail: L("R %@ · W %@", SystemStats.rate(stats.diskRead), SystemStats.rate(stats.diskWrite)),
+                              samples: history.diskIO, ceiling: nil)
+        tiles["network"]?.update(value: "↓ " + SystemStats.rate(stats.netIn), detail: "↑ " + SystemStats.rate(stats.netOut),
+                                 samples: history.network, ceiling: nil)
+        let info = stats.battery ?? BatteryInfo.read()
+        battery.isHidden = info == nil
+        if let info { battery.update(info) }
     }
 
-    var debugText: String { "\(name.stringValue)=\(figure.stringValue)" }
+    var debugText: String {
+        ["cpu", "memory", "gpu", "disk", "network"].map { "\($0)=\(tiles[$0]?.debugValue ?? "-")" }.joined(separator: " ")
+            + (battery.isHidden ? "" : " battery=\(battery.debugText)")
+            + " samples=\(SystemStats.shared.history.cpu.count)"
+    }
 }
