@@ -33,8 +33,15 @@ final class FloatingDockPanel: NSPanel, EscDismissable {
         /// Home and Settings cannot be hidden from the entry row.
         var canHide: Bool { self != .home && self != .settings }
 
+        /// The pages the card keeps; the rest open in the main window, and
+        /// the card's Settings icon leads there too.
+        var inCard: Bool { [.home, .terminal, .shelf, .clipboard, .settings].contains(self) }
+
+        /// Shown in the card itself (Settings only as an icon).
+        var opensInCard: Bool { inCard && self != .settings }
+
         static func isShown(_ page: Page) -> Bool {
-            !page.canHide || Prefs.bool("nav.show.\(page.rawValue)", true)
+            page.inCard && (!page.canHide || Prefs.bool("nav.show.\(page.rawValue)", true))
         }
 
         var title: String {
@@ -75,6 +82,8 @@ final class FloatingDockPanel: NSPanel, EscDismissable {
     // Card chrome
     private let cardView = CardView()
     private let backdrop = NSView()
+    /// The blurred desktop, seen through when the card is less than opaque.
+    private let glass = NSVisualEffectView()
     private let shade = NSView()
     private let nav = NSStackView()
     /// Clipboard and Settings, at the far end of the entry row.
@@ -84,7 +93,7 @@ final class FloatingDockPanel: NSPanel, EscDismissable {
     private var navButtons: [Page: NSButton] = [:]
     private let pageTitle = NSTextField(labelWithString: "")
     private let holidayLabel = NSTextField(labelWithString: "")
-    private let pageHost = FlippedView()
+    private let pageHost = PageHostView()
     private var pageWidth: NSLayoutConstraint?
     private var pageHeight: NSLayoutConstraint?
     private weak var shownPage: NSView?
@@ -188,6 +197,10 @@ final class FloatingDockPanel: NSPanel, EscDismissable {
     /// Opens a page of the card and keeps it open. Calling it again for the
     /// page that is already open closes the card (hotkeys toggle).
     static func open(_ target: Page, toggle: Bool = true, settingsTab: Int? = nil, pinned: Bool = true) {
+        guard target.opensInCard else {
+            MainWindow.open(target, toggle: toggle, settingsTab: settingsTab)
+            return
+        }
         let panel = instance()
         if toggle, panel.expanded, panel.heldOpen, panel.page == target, panel.isVisible {
             panel.closeCard()
@@ -208,6 +221,11 @@ final class FloatingDockPanel: NSPanel, EscDismissable {
     static var terminalIfCreated: TerminalPane? { shared?.terminalCreated == true ? shared?.terminalPane : nil }
     static var clipboard: ClipboardPane { instance().clipboardPane }
     static var shelf: ShelfPane { instance().shelfPane }
+    static var debugBallShowsStatus: Bool { instance().ballShowsStatus }
+    static var debugCardGlass: (shown: Bool, artwork: CGFloat) {
+        let panel = instance()
+        return (!panel.glass.isHidden, panel.backdrop.alphaValue)
+    }
     static var debugBallAcceptsFiles: Bool { instance().ball.registeredDraggedTypes.contains(.fileURL) }
     static var agenda: AgendaPane { instance().agendaPane }
     static var settings: SettingsPane { instance().settingsPane }
@@ -223,10 +241,35 @@ final class FloatingDockPanel: NSPanel, EscDismissable {
             + "mediaShown=\(!shared.player.isHidden) taskRows=\(shared.tasksBox.arrangedSubviews.count) "
             + "holiday=\"\(shared.holidayLabel.isHidden ? "" : shared.holidayLabel.stringValue)\" "
             + "pill=\(shared.compactLabel.isHidden ? "bars" : "text") text=\"\(shared.compactLabel.text)\" "
-            + "overflow=\(Int(shared.compactLabel.overflow)) homeKeys=\(shared.homeKeys.count)"
+            + "overflow=\(Int(shared.compactLabel.overflow)) rolls=\(shared.compactLabel.rolls) "
+            + "homeKeys=\(shared.homeKeys.count)"
     }
 
     static var debugActivity: [String] { shared?.activity.debugRows ?? [] }
+
+    // MARK: Sharing pages with the main window
+
+    /// A page's view (one per page, shown in the card or the main window).
+    static func pageView(for target: Page) -> NSView { instance().pageView(target) }
+
+    static var activityView: ActivityView { instance().activity }
+
+    /// The main window takes `view`: the card lets go of it (and folds if
+    /// it was showing it) and drops the size it had pinned on it.
+    static func release(_ view: NSView) {
+        guard let panel = shared else { return }
+        if panel.shownPage === view { panel.closeCard() }
+        if let width = panel.pageWidth, width.firstItem as? NSView === view {
+            panel.pageWidth?.isActive = false
+            panel.pageHeight?.isActive = false
+            panel.pageWidth = nil
+            panel.pageHeight = nil
+        }
+    }
+
+    /// Whether the card shows `view` right now.
+    static func isShowing(_ view: NSView) -> Bool { shared?.shownPage === view && shared?.expanded == true }
+
 
     // Test hooks for the dock self-test.
     static func debugCardSize(page: Page, x: Double, y: Double) -> NSSize {
@@ -344,6 +387,8 @@ final class FloatingDockPanel: NSPanel, EscDismissable {
                            name: NSApplication.didChangeScreenParametersNotification, object: nil)
         center.addObserver(self, selector: #selector(activityChanged), name: .activityChanged, object: nil)
         center.addObserver(self, selector: #selector(updateStatusChanged), name: .updateStatusChanged, object: nil)
+        center.addObserver(self, selector: #selector(ballIconChanged), name: .statusIconChanged, object: nil)
+        center.addObserver(self, selector: #selector(ballIconChanged), name: .settingsChanged, object: nil)
         updateStatusChanged()
         center.addObserver(forName: MediaObserver.controlUnavailable, object: nil, queue: .main) { [weak self] note in
             self?.showControlNote(note.object as? String ?? "")
@@ -419,7 +464,29 @@ final class FloatingDockPanel: NSPanel, EscDismissable {
         closeCard()
     }
 
-    @objc private func dataChanged() { refresh() }
+    @objc private func dataChanged() {
+        applyCardOpacity()
+        refresh()
+    }
+
+    /// How much of the page's veil is kept at the chosen opacity.
+    private var veilScale: CGFloat { 0.55 + 0.45 * cardOpacity }
+
+    /// Settings › Appearance › Background: 30–100 %.
+    private var cardOpacity: CGFloat {
+        CGFloat(min(max(Prefs.int(SettingsPane.cardOpacityKey, 100), 30), 100)) / 100
+    }
+
+    /// Below 100 % the artwork and the dark base fade and the blurred
+    /// desktop shows through; the veil thins less, so text stays readable.
+    private func applyCardOpacity() {
+        let opacity = cardOpacity
+        glass.isHidden = opacity >= 0.999
+        backdrop.alphaValue = opacity
+        cardView.layer?.backgroundColor = NSColor(white: 0.04, alpha: 0.96 * opacity).cgColor
+        shade.layer?.backgroundColor = NSColor(srgbRed: 0.05, green: 0.05, blue: 0.10,
+                                               alpha: Self.dim(for: page) * veilScale).cgColor
+    }
 
     /// Shows or hides the Update icon; the card is laid out again only
     /// when it appears or goes (not on every percent of a download).
@@ -433,6 +500,15 @@ final class FloatingDockPanel: NSPanel, EscDismissable {
     }
 
     @objc private func updateTapped() { UpdateChecker.shared.updateNow() }
+
+    /// Whether the ball shows the status icon right now.
+    private var ballShowsStatus = false
+
+    /// Settings › Appearance: logo or status icon on the ball.
+    @objc private func ballIconChanged() {
+        guard StatusIcon.onBall || ballShowsStatus else { return }
+        applyIcon()
+    }
 
     /// The activity page grows and shrinks with what it shows.
     @objc private func activityChanged() {
@@ -474,6 +550,11 @@ final class FloatingDockPanel: NSPanel, EscDismissable {
         backdrop.autoresizingMask = [.width, .height]
         shade.wantsLayer = true
         shade.autoresizingMask = [.width, .height]
+        glass.material = .hudWindow
+        glass.blendingMode = .behindWindow
+        glass.state = .active
+        glass.autoresizingMask = [.width, .height]
+        cardView.addSubview(glass)
         cardView.addSubview(backdrop)
         cardView.addSubview(shade)
         cardView.isHidden = true
@@ -486,7 +567,7 @@ final class FloatingDockPanel: NSPanel, EscDismissable {
         // ---- card chrome: entry icons, title, holiday countdown, close
         nav.spacing = 4
         navTrailing.spacing = 4
-        for target in Page.allCases {
+        for target in Page.allCases where target.inCard {
             let button = NSButton()
             let config = NSImage.SymbolConfiguration(pointSize: 13, weight: .medium)
             button.image = (NSImage(systemSymbolName: target.symbol, accessibilityDescription: target.title)
@@ -853,16 +934,27 @@ final class FloatingDockPanel: NSPanel, EscDismissable {
         let position = media.position()
 
         // Lyrics are only looked up when something shows them.
-        var line = ""
+        var line = "", sung = ""
         if mediaStyle == 1, let position,
            let lines = LyricsProvider.shared.lines(title: media.title, artist: media.artist,
                                                          duration: media.duration) {
-            line = LyricsProvider.current(in: lines, at: position) ?? ""
+            line = LyricsProvider.current(in: lines, at: position + LyricsProvider.lead) ?? ""
+            // Through a blank line (a break in the singing) the pill keeps the
+            // last one sung. Its roll starts early enough to be in place
+            // `lead` seconds before the line is sung.
+            sung = LyricsProvider.current(in: lines.filter { !$0.text.trimmingCharacters(in: .whitespaces).isEmpty },
+                                          at: position + LyricsProvider.lead + MarqueeLabel.rollDuration) ?? ""
+        }
+        // The lyric being sung stays until the next one; the song shows only
+        // while there is no line (before the first one, or no lyrics).
+        let song = [media.title, media.artist].filter { !$0.isEmpty }.joined(separator: " — ")
+        let pillText = sung.isEmpty ? song : sung
+        if pillText != compactLabel.text {
+            // Rolls whenever it is seen, even on a forced refresh (a new position from the player).
+            if compactLabel.isHidden { compactLabel.text = pillText } else { compactLabel.roll(to: pillText) }
         }
         if line != lastLyric || force {
             lastLyric = line
-            let fallback = [media.title, media.artist].filter { !$0.isEmpty }.joined(separator: " — ")
-            compactLabel.text = line.isEmpty ? fallback : line
             lyricLabel.stringValue = line
             let wasHidden = lyricLabel.isHidden
             lyricLabel.isHidden = line.isEmpty
@@ -938,6 +1030,16 @@ final class FloatingDockPanel: NSPanel, EscDismissable {
     }
 
     private func applyIcon() {
+        ballShowsStatus = StatusIcon.onBall
+        if ballShowsStatus {
+            // Drawn at twice the ball's size: the layer takes it as pixels.
+            iconImage = StatusIcon.shared.image(size: Self.iconSize * 2, foreground: .white, plate: .circle,
+                                                inset: Self.iconSize * 2 * 0.15)
+            ball.toolTip = StatusIcon.shared.summary
+            refresh()
+            return
+        }
+        ball.toolTip = nil
         let path = Prefs.string("dock.iconPath")
         var image: NSImage?
         if !path.isEmpty, let data = try? Data(contentsOf: URL(fileURLWithPath: path)) {
@@ -1087,25 +1189,7 @@ final class FloatingDockPanel: NSPanel, EscDismissable {
 
         switch page {
         case .home:
-            card.orientation = horizontal ? .horizontal : .vertical
-            card.alignment = horizontal ? .top : .leading
-            divider.isHidden = player.isHidden
-            dividerWidth.isActive = false
-            dividerHeight.isActive = false
-            if horizontal {
-                // As wide as every other page: the to-do column takes the rest.
-                sideWidth.constant = player.isHidden ? Self.cardContentWidth
-                    : Self.cardContentWidth - Self.columnWidth - 2 * card.spacing - 1
-                dividerWidth.constant = 1
-                dividerHeight.constant = max(60, max(player.fittingSize.height, side.fittingSize.height))
-            } else {
-                sideWidth.constant = Self.columnWidth
-                dividerWidth.constant = Self.columnWidth
-                dividerHeight.constant = 1
-            }
-            dividerWidth.isActive = true
-            dividerHeight.isActive = true
-            card.layoutSubtreeIfNeeded()
+            layoutHome(horizontal: horizontal, width: Self.cardContentWidth)
             return card.fittingSize
         case .activity:
             activity.setWidth(horizontal ? Self.cardContentWidth : Self.columnWidth + 20)
@@ -1126,6 +1210,28 @@ final class FloatingDockPanel: NSPanel, EscDismissable {
         }
     }
 
+    /// Home: player and to-dos side by side, `width` wide (the to-do column
+    /// takes what the player leaves), or stacked in the narrow column.
+    private func layoutHome(horizontal: Bool, width: CGFloat) {
+        card.orientation = horizontal ? .horizontal : .vertical
+        card.alignment = horizontal ? .top : .leading
+        divider.isHidden = player.isHidden
+        dividerWidth.isActive = false
+        dividerHeight.isActive = false
+        if horizontal {
+            sideWidth.constant = player.isHidden ? width : width - Self.columnWidth - 2 * card.spacing - 1
+            dividerWidth.constant = 1
+            dividerHeight.constant = max(60, max(player.fittingSize.height, side.fittingSize.height))
+        } else {
+            sideWidth.constant = Self.columnWidth
+            dividerWidth.constant = Self.columnWidth
+            dividerHeight.constant = 1
+        }
+        dividerWidth.isActive = true
+        dividerHeight.isActive = true
+        card.layoutSubtreeIfNeeded()
+    }
+
     /// Lays the card's chrome and page out for `content` and returns the
     /// card's size.
     private func layoutCard(content: NSSize) -> NSSize {
@@ -1143,8 +1249,9 @@ final class FloatingDockPanel: NSPanel, EscDismissable {
         cardView.frame.size = size
         backdrop.frame = NSRect(origin: .zero, size: size)
         shade.frame = backdrop.frame
+        glass.frame = backdrop.frame
         // Pages full of controls get a heavier veil than the two glanceable ones.
-        shade.layer?.backgroundColor = NSColor(srgbRed: 0.05, green: 0.05, blue: 0.10, alpha: Self.dim(for: page)).cgColor
+        applyCardOpacity()
 
         for (key, button) in navButtons { button.isHidden = !Page.isShown(key) }
         nav.orientation = horizontal ? .horizontal : .vertical
@@ -1385,6 +1492,16 @@ final class FloatingDockPanel: NSPanel, EscDismissable {
 
     /// Test hook: with music playing, the ball's width and whether the
     /// pill's bars show, with `page` open (nil = card closed).
+    /// Test hook: the pill's line now, and how many lines have rolled in.
+    static func debugTicker() -> (text: String, rolls: Int) {
+        let panel = instance()
+        if !panel.isVisible { panel.orderFrontRegardless() }
+        panel.tickPlayback()
+        return (panel.compactLabel.text, panel.compactLabel.rolls)
+    }
+
+    static func debugHideBall() { instance().orderOut(nil) }
+
     static func debugBall(page: Page?) -> (width: CGFloat, bars: Bool) {
         let panel = instance()
         if let page { panel.present(page, hold: true, focus: false) } else { panel.closeCard() }
@@ -1577,7 +1694,7 @@ final class FloatingDockPanel: NSPanel, EscDismissable {
         let (window, ballRect, cardRect) = geometry()
         guard let cardRect, let newImage = cardSnapshot(contentOnly: true) else { return nil }
         let morph = Morph(from: oldRect, to: cardRect, oldContent: oldImage, newContent: newImage,
-                          dimFrom: Self.dim(for: oldPage), dimTo: Self.dim(for: page),
+                          dimFrom: Self.dim(for: oldPage) * veilScale, dimTo: Self.dim(for: page) * veilScale,
                           anchorRight: ballRect.minX >= cardRect.maxX - 1)
         return ZoomPlan(stage: window.union(oldRect), ballRect: ballRect, parts: [], morph: morph)
     }
@@ -1675,6 +1792,15 @@ final class FloatingDockPanel: NSPanel, EscDismissable {
         back.layer?.contents = backdrop.layer?.contents
         back.layer?.contentsGravity = .resizeAspectFill
         back.autoresizingMask = [.width, .height]
+        back.alphaValue = cardOpacity
+        if cardOpacity < 0.999 {
+            let blur = NSVisualEffectView()
+            blur.material = .hudWindow
+            blur.blendingMode = .behindWindow
+            blur.state = .active
+            blur.autoresizingMask = [.width, .height]
+            card.addSubview(blur)
+        }
         let veil = NSView()
         veil.wantsLayer = true
         veil.layer?.backgroundColor = NSColor(srgbRed: 0.05, green: 0.05, blue: 0.10, alpha: 1).cgColor
@@ -2000,6 +2126,11 @@ final class FloatingDockPanel: NSPanel, EscDismissable {
     @objc private func navTapped(_ sender: NSButton) {
         guard sender.tag < Page.allCases.count else { return }
         let target = Page.allCases[sender.tag]
+        guard target.opensInCard else {
+            closeCard()
+            MainWindow.open(target, toggle: false)
+            return
+        }
         // A page reached by clicking is not pinned: it goes away when the
         // card loses the keyboard. A hotkey pins only the page it opened;
         // clicking over to another page ends that.
@@ -2503,5 +2634,20 @@ final class SlimScroller: NSScroller {
         let rect = rect(for: .knob).insetBy(dx: 2, dy: 2)
         NSColor(white: 1, alpha: 0.35).setFill()
         NSBezierPath(roundedRect: rect, xRadius: rect.width / 2, yRadius: rect.width / 2).fill()
+    }
+}
+
+extension Notification.Name {
+    /// The card let go of a page's view (the main window may take it back).
+    static let dockPageReleased = Notification.Name("omnihub.dockPageReleased")
+}
+
+/// The card's page area: tells the main window when a page leaves it.
+final class PageHostView: NSView {
+    override var isFlipped: Bool { true }
+
+    override func willRemoveSubview(_ subview: NSView) {
+        super.willRemoveSubview(subview)
+        DispatchQueue.main.async { NotificationCenter.default.post(name: .dockPageReleased, object: subview) }
     }
 }

@@ -6,7 +6,8 @@ extension Notification.Name {
     static let activityChanged = Notification.Name("omnihub.activityChanged")
 }
 
-/// Activity: CPU / GPU / memory / disk usage and IP addresses.
+/// Activity: CPU / GPU / memory / disk usage, network throughput, the
+/// battery and IP addresses.
 ///
 /// Sampling runs while something needs it (`retain` / `release`): the
 /// activity page and the menu-bar runner.
@@ -24,6 +25,9 @@ final class SystemStats {
         var publicIP: String?
         var diskRead: Double = 0    // bytes per second
         var diskWrite: Double = 0
+        var netIn: Double = 0       // bytes per second, Wi-Fi and Ethernet
+        var netOut: Double = 0
+        var battery: BatteryInfo?
     }
 
     /// Recent readings, oldest first — what the charts draw.
@@ -32,6 +36,7 @@ final class SystemStats {
         var gpu: [Double] = []
         var memory: [Double] = []
         var diskIO: [Double] = []   // read + write, bytes per second
+        var network: [Double] = []  // in + out, bytes per second
         static let capacity = 60
 
         mutating func push(_ snapshot: Snapshot) {
@@ -43,11 +48,13 @@ final class SystemStats {
             add(&gpu, snapshot.gpu ?? 0)
             add(&memory, snapshot.memoryTotal > 0 ? Double(snapshot.memoryUsed) / Double(snapshot.memoryTotal) : 0)
             add(&diskIO, snapshot.diskRead + snapshot.diskWrite)
+            add(&network, snapshot.netIn + snapshot.netOut)
         }
     }
 
     private(set) var history = History()
     private var previousDisk: (read: UInt64, write: UInt64, at: Date)?
+    private var previousNet: (input: UInt64, output: UInt64, at: Date)?
 
     private(set) var snapshot = Snapshot()
     private var timer: Timer?
@@ -73,6 +80,7 @@ final class SystemStats {
         timer = nil
         previousTicks = nil
         previousDisk = nil
+        previousNet = nil
     }
 
     /// Picks up a changed sampling interval.
@@ -120,6 +128,8 @@ final class SystemStats {
             (next.memoryUsed, next.memoryTotal) = Self.memory()
             (next.diskUsed, next.diskTotal) = Self.disk()
             (next.diskRead, next.diskWrite) = self.diskRates()
+            (next.netIn, next.netOut) = self.networkRates()
+            next.battery = BatteryInfo.read()
             next.localIPs = Self.localAddresses()
             next.publicIP = wantPublic ? knownPublic : nil
             DispatchQueue.main.async {
@@ -223,6 +233,42 @@ final class SystemStats {
         guard let previous = previousDisk, read >= previous.read, write >= previous.write else { return (0, 0) }
         let seconds = max(now.timeIntervalSince(previous.at), 0.2)
         return (Double(read - previous.read) / seconds, Double(write - previous.write) / seconds)
+    }
+
+    // MARK: Network
+
+    /// Bytes received / sent per second on the Wi-Fi and Ethernet ports
+    /// (`en*`) since the last call. VPN tunnels and the loopback are left
+    /// out: their traffic also crosses a physical port.
+    private func networkRates() -> (Double, Double) {
+        let (input, output) = Self.networkCounters()
+        let now = Date()
+        defer { previousNet = (input, output, now) }
+        guard let previous = previousNet, input >= previous.input, output >= previous.output else { return (0, 0) }
+        let seconds = max(now.timeIntervalSince(previous.at), 0.2)
+        return (Double(input - previous.input) / seconds, Double(output - previous.output) / seconds)
+    }
+
+    /// Byte counters of the `en*` interfaces, from the interface MIB (as
+    /// `netstat -ib`). The routing sysctl's `RTM_IFINFO2` and `getifaddrs`
+    /// hand out counters cut to 32 bits, which wrap every 4 GB.
+    static func networkCounters() -> (input: UInt64, output: UInt64) {
+        guard let names = if_nameindex() else { return (0, 0) }
+        defer { if_freenameindex(names) }
+        var input: UInt64 = 0, output: UInt64 = 0
+        var cursor = names
+        while cursor.pointee.if_index != 0 {
+            defer { cursor = cursor.successor() }
+            guard String(cString: cursor.pointee.if_name).hasPrefix("en") else { continue }
+            var mib: [Int32] = [CTL_NET, PF_LINK, NETLINK_GENERIC, IFMIB_IFDATA,
+                                Int32(cursor.pointee.if_index), IFDATA_GENERAL]
+            var data = ifmibdata()
+            var length = MemoryLayout<ifmibdata>.size
+            guard sysctl(&mib, 6, &data, &length, nil, 0) == 0 else { continue }
+            input += data.ifmd_data.ifi_ibytes
+            output += data.ifmd_data.ifi_obytes
+        }
+        return (input, output)
     }
 
     // MARK: IP

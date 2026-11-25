@@ -30,8 +30,8 @@ enum DockSelfTest {
               Page.allCases == [.home, .activity, .tasks, .terminal, .shelf, .clipboard, .settings])
         _ = FloatingDockPanel.debugCardSize(page: .home, x: 0.5, y: 0)
         var nav = FloatingDockPanel.debugNav
-        check("Clipboard and Settings sit at the far end of the entry row",
-              nav.leading == ["Home", "Activity", "Agenda", "Terminal", "Shelf"] && nav.trailing == ["Clipboard", "Settings"],
+        check("Clipboard and Settings sit at the far end of the entry row (Activity and Agenda are in the main window)",
+              nav.leading == ["Home", "Terminal", "Shelf"] && nav.trailing == ["Clipboard", "Settings"],
               "\(nav)")
         Prefs.set("nav.show.terminal", false)
         _ = FloatingDockPanel.debugCardSize(page: .home, x: 0.5, y: 0)
@@ -142,6 +142,38 @@ enum DockSelfTest {
         check("music stopping: the pill draws back into the ball",
               between(morph.shrink) >= 4 && zip(morph.shrink, morph.shrink.dropFirst()).allSatisfy { $0 >= $1 }
               && morph.shrink.last == morph.ball, "\(morph.shrink.map { Int($0) })")
+        // ---- the pill's line: the song until the first lyric, then the lyrics, rolling up
+        let style = UserDefaults.standard.object(forKey: "dock.mediaStyle")
+        Prefs.set("dock.mediaStyle", 1)
+        var sung = song
+        sung.title = "Ticker Song"; sung.duration = 200; sung.elapsed = 5; sung.anchor = Date()
+        LyricsProvider.shared.debugSeed(title: sung.title, artist: sung.artist, duration: 200,
+                                        lines: [.init(time: 10, text: "First line"), .init(time: 25, text: "Second line"),
+                                                .init(time: 60, text: " ")])
+        MediaObserver.shared.debugInject(sung)
+        _ = FloatingDockPanel.debugBall(page: nil)
+        let start = FloatingDockPanel.debugTicker()
+        func at(_ seconds: Double) -> (text: String, rolls: Int) {
+            sung.elapsed = seconds; sung.anchor = Date()
+            MediaObserver.shared.debugInject(sung)
+            return FloatingDockPanel.debugTicker()
+        }
+        let first = at(12), held = at(20), second = at(40), later = at(120)
+        // In place half a second before it is sung: the roll starts that much plus its own length early.
+        let early = MarqueeLabel.rollDuration + LyricsProvider.lead
+        let notYet = at(25 - early - 0.4), rolling = at(25 - early + 0.05)
+        check("pill line: the song before the first lyric, then each lyric held until the next (through a blank line) "
+              + "(\(start.text) → \(first.text) → \(held.text) → \(second.text) → \(later.text))",
+              start.text == "Ticker Song — Tester" && first.text == "First line" && held.text == "First line"
+                && second.text == "Second line" && later.text == "Second line")
+        check("pill line: the next lyric starts rolling \(early) s before it is sung (\(notYet.text) → \(rolling.text))",
+              notYet.text == "First line" && rolling.text == "Second line")
+        check("pill line: each new line rolls in, slowly (\(start.rolls) → \(first.rolls) → \(second.rolls), \(MarqueeLabel.rollDuration) s)",
+              first.rolls == start.rolls + 1 && held.rolls == first.rolls && second.rolls == first.rolls + 1
+                && later.rolls == second.rolls && MarqueeLabel.rollDuration >= 1)
+        FloatingDockPanel.debugHideBall()
+        UserDefaults.standard.set(style, forKey: "dock.mediaStyle")
+
         MediaObserver.shared.debugInject(song)
         let onHome = FloatingDockPanel.debugBall(page: .home)
         let onAgenda = FloatingDockPanel.debugBall(page: .tasks)

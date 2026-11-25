@@ -1,8 +1,21 @@
 import AppKit
 
-/// Menu-bar icon: a tiny winged runner. The busier the machine
-/// (memory or CPU, chosen in settings), the faster she flaps.
+/// Menu-bar icon: a tiny winged buddy. The busier the machine
+/// (memory or CPU, chosen in settings), the faster she flaps. Optionally the
+/// network speed sits to its right: upload above, download below.
 final class StatusRunner {
+    /// Settings › Appearance / the menu: the network speed beside the icon.
+    static let netSpeedKey = "status.netSpeed"
+    /// The buddy's speed: 0 follows memory, 1 follows CPU, 2 stays still.
+    static let speedKey = "status.buddySpeed"
+    static var showsNetSpeed: Bool { Prefs.bool(netSpeedKey, false) }
+
+    /// The speed choice, from the older "animated" / "metric" pair when unset.
+    static var speed: Int {
+        if UserDefaults.standard.object(forKey: speedKey) != nil { return Prefs.int(speedKey, 0) }
+        return Prefs.bool("status.animated", true) ? Prefs.int("status.metric", 0) : 2
+    }
+
     private weak var button: NSStatusBarButton?
     private let frames = StatusRunner.makeFrames()
     private var index = 0
@@ -17,20 +30,41 @@ final class StatusRunner {
         let center = NotificationCenter.default
         center.addObserver(self, selector: #selector(statsChanged), name: .activityChanged, object: nil)
         center.addObserver(self, selector: #selector(statsChanged), name: .settingsChanged, object: nil)
+        center.addObserver(self, selector: #selector(statsChanged), name: .statusIconChanged, object: nil)
         reschedule()
     }
 
+    /// Settings › Appearance: the status icon stands in for the runner.
+    private var showsStatusIcon: Bool { StatusIcon.inMenuBar }
+
     /// 0 = memory, 1 = CPU.
-    private var metric: Int { Prefs.int("status.metric", 0) }
-    private var animated: Bool { Prefs.bool("status.animated", true) }
+    private var metric: Int { Self.speed == 1 ? 1 : 0 }
+    private var animated: Bool { Self.speed != 2 }
+    /// The rates last read, as shown ("12 KB/s").
+    private var rates = (up: "", down: "")
 
     var debugState: String {
         "metric=\(metric == 1 ? "cpu" : "memory") load=\(String(format: "%.0f%%", load * 100)) "
-            + "frameInterval=\(String(format: "%.3f", interval))s frames=\(frames.count) animated=\(animated)"
+            + "frameInterval=\(String(format: "%.3f", interval))s frames=\(frames.count) animated=\(animated) "
+            + "netSpeed=\(Self.showsNetSpeed) up=\(rates.up) down=\(rates.down) width=\(button?.image?.size.width ?? 0)"
     }
 
     @objc private func statsChanged() {
         let stats = SystemStats.shared.snapshot
+        rates = (SystemStats.rate(stats.netOut), SystemStats.rate(stats.netIn))
+        if showsStatusIcon {
+            if timer != nil || interval != 0 {
+                interval = 0
+                reschedule()
+            }
+            button?.image = withSpeed(StatusIcon.shared.image(size: 22, foreground: .labelColor))
+            button?.toolTip = StatusIcon.shared.summary
+            return
+        }
+        if button?.image?.isTemplate == false {
+            // Back from the status icon.
+            interval = -1
+        }
         let value: Double
         if metric == 1 {
             value = stats.cpu ?? 0
@@ -44,15 +78,18 @@ final class StatusRunner {
         if abs(next - interval) > 0.012 || (next == 0) != (interval == 0) {
             interval = next
             reschedule()
+        } else if timer == nil {
+            button?.image = withSpeed(frames[index])
         }
     }
 
     private func reschedule() {
         timer?.invalidate()
         timer = nil
+        guard !showsStatusIcon else { return }
         guard animated, interval > 0 else {
             index = 0
-            button?.image = frames[0]
+            button?.image = withSpeed(frames[0])
             return
         }
         let timer = Timer(timeInterval: interval, repeats: true) { [weak self] _ in self?.advance() }
@@ -63,7 +100,54 @@ final class StatusRunner {
 
     private func advance() {
         index = (index + 1) % frames.count
-        button?.image = frames[index]
+        button?.image = withSpeed(frames[index])
+    }
+
+    // MARK: Network speed
+
+    private static let speedFont = NSFont.monospacedDigitSystemFont(ofSize: 9, weight: .semibold)
+    /// Wide enough for "888.8 MB/s", so the menu bar does not shift as figures change.
+    private static let speedWidth: CGFloat = {
+        let text = ("888.8 MB/s" as NSString).size(withAttributes: [.font: speedFont]).width
+        return ceil(text) + 9
+    }()
+
+    /// `icon` with the network speed to its right, when that is on.
+    private func withSpeed(_ icon: NSImage) -> NSImage {
+        guard Self.showsNetSpeed else { return icon }
+        return Self.compose(icon, up: rates.up, down: rates.down)
+    }
+
+    /// The icon, a gap, then the two rates in a column of fixed width.
+    static func compose(_ icon: NSImage, up: String, down: String) -> NSImage {
+        let rates = (up: up, down: down)
+        let gap: CGFloat = 4
+        let height = max(icon.size.height, 22)
+        let size = NSSize(width: icon.size.width + gap + speedWidth, height: height)
+        // A template icon stays one: everything in black, tinted by the menu bar.
+        let template = icon.isTemplate
+        let image = NSImage(size: size, flipped: false) { _ in
+            icon.draw(in: NSRect(x: 0, y: (height - icon.size.height) / 2, width: icon.size.width, height: icon.size.height))
+            let colour: NSColor = template ? .black : .labelColor
+            let x = icon.size.width + gap
+            drawRate("arrow.up", rates.up, at: NSPoint(x: x, y: height / 2 + 0.5), colour: colour)
+            drawRate("arrow.down", rates.down, at: NSPoint(x: x, y: 1), colour: colour)
+            return true
+        }
+        image.isTemplate = template
+        image.accessibilityDescription = "OmniHub ↑\(rates.up) ↓\(rates.down)"
+        return image
+    }
+
+    /// An arrow and a rate on one line, its bottom-left at `origin`.
+    private static func drawRate(_ symbol: String, _ text: String, at origin: NSPoint, colour: NSColor) {
+        let config = NSImage.SymbolConfiguration(pointSize: 7, weight: .heavy)
+            .applying(NSImage.SymbolConfiguration(paletteColors: [colour]))
+        if let arrow = NSImage(systemSymbolName: symbol, accessibilityDescription: nil)?.withSymbolConfiguration(config) {
+            arrow.draw(in: NSRect(x: origin.x, y: origin.y + 1.5, width: arrow.size.width, height: arrow.size.height))
+        }
+        (text as NSString).draw(at: NSPoint(x: origin.x + 8, y: origin.y - 0.5),
+                                withAttributes: [.font: speedFont, .foregroundColor: colour])
     }
 
     // MARK: Artwork

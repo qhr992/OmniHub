@@ -52,6 +52,14 @@ final class LyricsProvider {
         return nil
     }
 
+    /// Test hook: lyrics for a track without looking them up.
+    func debugSeed(title: String, artist: String, duration: Double, lines: [Line]) {
+        cache[key(title, artist, duration)] = lines
+    }
+
+    /// A line shows this long before it is sung, so it never lags the voice.
+    static let lead: Double = 0.5
+
     /// The line being sung at `position`.
     static func current(in lines: [Line], at position: Double) -> String? {
         var result: String?

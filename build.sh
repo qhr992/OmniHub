@@ -21,6 +21,16 @@ SOURCES=(
   Sources/HotKey.swift
   Sources/HotKeyCenter.swift
   Sources/SettingsPane.swift
+  Sources/SettingsOverview.swift
+  Sources/SidebarList.swift
+  Sources/MainWindow.swift
+  Sources/HelpContent.swift
+  Sources/HelpView.swift
+  Sources/MenuBarPanel.swift
+  Sources/MainWindowMotion.swift
+  Sources/MainHome.swift
+  Sources/MainHomeTiles.swift
+  Sources/MainSelfTest.swift
   Sources/ScreenCapture.swift
   Sources/WindowPicker.swift
   Sources/Annotate.swift
@@ -52,6 +62,7 @@ SOURCES=(
   Sources/TerminalSession.swift
   Sources/TerminalCursor.swift
   Sources/TerminalPane.swift
+  Sources/TransferProgressButton.swift
   Sources/TerminalSettingsView.swift
   Sources/ConnectionStore.swift
   Sources/VaultSelfTest.swift
@@ -62,6 +73,15 @@ SOURCES=(
   Sources/RemoteSelfTest.swift
   Sources/SystemStats.swift
   Sources/ActivityView.swift
+  Sources/ActivityExtras.swift
+  Sources/KeepAwake.swift
+  Sources/Battery.swift
+  Sources/TopApps.swift
+  Sources/StatusIcon.swift
+  Sources/StatusIconColors.swift
+  Sources/SettingsSection.swift
+  Sources/SettingsAppearance.swift
+  Sources/StatusSelfTest.swift
   Sources/BootAnimation.swift
   Sources/MarqueeLabel.swift
   Sources/FloatingDockPanel.swift

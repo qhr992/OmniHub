@@ -28,6 +28,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     static private(set) var shared: AppDelegate?
 
     private var statusItem: NSStatusItem!
+    /// The menu bar icon's menu, shown on a right (or Control-) click.
+    private var statusMenu: NSMenu!
     private var statusRunner: StatusRunner?
     private var lastDebug = ""
     private var controller: OverlayController?
@@ -62,6 +64,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             ServerTunnels.parse(text).forEach { print("\($0.summary) | \($0.state)") }
             exit(0)
         }
+
+        if args.contains(where: { $0.hasSuffix("-selftest") }) { SelfTestPrefs.keep() }
 
         // `--askpass-selftest`: a vault password must only reach an ssh that
         // OmniHub itself started, never a process that just sets the env var.
@@ -104,6 +108,16 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         if let index = args.firstIndex(of: "--l10n-selftest") {
             let folder = index + 1 < args.count ? URL(fileURLWithPath: args[index + 1], isDirectory: true) : nil
             L10nSelfTest.run(pictures: folder)
+            return
+        }
+        if let index = args.firstIndex(of: "--status-selftest") {
+            let folder = index + 1 < args.count ? URL(fileURLWithPath: args[index + 1], isDirectory: true) : nil
+            StatusSelfTest.run(pictures: folder)
+            return
+        }
+        if let index = args.firstIndex(of: "--main-selftest") {
+            let folder = index + 1 < args.count ? URL(fileURLWithPath: args[index + 1], isDirectory: true) : nil
+            MainSelfTest.run(pictures: folder)
             return
         }
         if args.contains("--tab-selftest") {
@@ -157,7 +171,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
         ClipboardStore.shared.start()
         MediaObserver.shared.start()
+        StatusIcon.shared.start()
         if !isToolRun {
+            applyDockTile()
+            let center = NotificationCenter.default
+            center.addObserver(self, selector: #selector(applyDockTile), name: .settingsChanged, object: nil)
+            center.addObserver(self, selector: #selector(refreshDockTile), name: .statusIconChanged, object: nil)
+            center.addObserver(self, selector: #selector(applyActivationPolicy), name: .mainWindowChanged, object: nil)
             ShelfStore.shared.startPurging()
             UpdateChecker.shared.start()
         }
@@ -190,6 +210,48 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
     }
 
+    // MARK: Dock tile
+
+    private var dockTileView: NSImageView?
+
+    /// Settings › Appearance › Show in the Dock: the status icon as a live
+    /// Dock tile. OmniHub is a menu-bar app otherwise, with no Dock icon.
+    @objc private func applyDockTile() {
+        let wanted = StatusIcon.inDock
+        guard wanted != (dockTileView != nil) else { return }
+        if wanted {
+            applyActivationPolicy()
+            let view = NSImageView(frame: NSRect(origin: .zero, size: NSApp.dockTile.size))
+            view.imageScaling = .scaleProportionallyUpOrDown
+            NSApp.dockTile.contentView = view
+            dockTileView = view
+            refreshDockTile()
+        } else {
+            NSApp.dockTile.contentView = nil
+            dockTileView = nil
+            applyActivationPolicy()
+        }
+    }
+
+    /// A Dock icon while the main window is open or the status icon is
+    /// wanted there; a menu-bar app otherwise.
+    @objc private func applyActivationPolicy() {
+        let policy: NSApplication.ActivationPolicy = StatusIcon.inDock || MainWindow.isOpen ? .regular : .accessory
+        if NSApp.activationPolicy() != policy { NSApp.setActivationPolicy(policy) }
+    }
+
+    @objc private func refreshDockTile() {
+        guard let view = dockTileView else { return }
+        view.image = StatusIcon.shared.image(size: 256, foreground: .white, plate: .square)
+        NSApp.dockTile.display()
+    }
+
+    /// A click on the Dock icon opens the main window.
+    func applicationShouldHandleReopen(_ sender: NSApplication, hasVisibleWindows flag: Bool) -> Bool {
+        if !MainWindow.isOpen || !(NSApp.keyWindow is MainWindow) { MainWindow.toggle() }
+        return false
+    }
+
     func applicationWillTerminate(_ notification: Notification) {
         MediaObserver.shared.stop()
         FloatingDockPanel.terminateShells()
@@ -199,6 +261,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     /// settings over the first time the renamed app starts.
     private func migrateLegacyPreferences() {
         let defaults = UserDefaults.standard
+        // Scrolling capture has no shortcut any more: drop one set earlier.
+        defaults.removeObject(forKey: "hotkey.longSnip")
         guard !defaults.bool(forKey: "migratedFromSnaCut") else { return }
         defaults.set(true, forKey: "migratedFromSnaCut")
         guard let legacy = defaults.persistentDomain(forName: "com.local.snacut") else { return }
@@ -394,8 +458,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             NotificationCenter.default.post(name: .settingsChanged, object: nil)
         case "open/terminal": FloatingDockPanel.open(.terminal)
         case "open/settings": FloatingDockPanel.open(.settings)
+        case "open/help": MainWindow.openHelp()
         case "open/settings/0", "open/settings/1", "open/settings/2", "open/settings/3",
-             "open/settings/4", "open/settings/5", "open/settings/6", "open/settings/7":
+             "open/settings/4", "open/settings/5", "open/settings/6", "open/settings/7", "open/settings/8":
             FloatingDockPanel.open(.settings, toggle: false, settingsTab: Int(command.suffix(1)))
         case "debug/terminal/connections", "debug/terminal/transfers", "debug/terminal/forwards",
              "debug/terminal/sftp", "debug/terminal/settings":
@@ -425,6 +490,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         case "debug/pin-zoom/noop": _ = PinnedImageWindow.debugZoomFirst(1)
         case "open/clipfav": FloatingDockPanel.open(.clipboard, toggle: false); FloatingDockPanel.clipboard.showFavourites()
         case "open/dock": FloatingDockPanel.show()
+        case "open/main": MainWindow.toggle()
         case "toggle/dock": FloatingDockPanel.toggle()
         case "expand-dock": FloatingDockPanel.show(); FloatingDockPanel.expandForDemo()
         case "collapse-dock": FloatingDockPanel.closeCard()
@@ -449,6 +515,26 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             try? diagnosticsText().write(to: Store.url("diagnostics.txt"), atomically: true, encoding: .utf8)
         case "snapshot":
             snapshotWindows()
+        case "debug/menubar-panel":
+            if let button = statusItem.button { MenuBarPanel.shared.toggle(from: button) }
+        case "debug/status-icon":
+            // What the menu bar icon is drawn from, and the icon at 10×.
+            let icon = StatusIcon.shared
+            try? "\(icon.readings)\n\(StatusIcon.Config.current)\n".write(to: Store.url("status-icon.txt"), atomically: true, encoding: .utf8)
+            let image = icon.image(size: 200, foreground: .white)
+            if let tiff = image.tiffRepresentation, let png = NSBitmapImageRep(data: tiff)?.representation(using: .png, properties: [:]) {
+                try? png.write(to: Store.url("status-icon.png"))
+            }
+        case "debug/screen":
+            // The whole screen as OmniHub sees it (menu bar icon, ball and
+            // all), for checks run where screencapture lacks the permission.
+            ScreenCapture.captureAllDisplays { captures in
+                for (index, capture) in captures.enumerated() {
+                    let rep = NSBitmapImageRep(cgImage: capture.image)
+                    try? rep.representation(using: .png, properties: [:])?
+                        .write(to: Store.url("screen-\(index).png"))
+                }
+            }
         // debug/…: exercise the capture flows without a human at the mouse.
         // `force` skips the permission gate (frames then show only the
         // wallpaper), which is enough to prove the plumbing.
@@ -717,7 +803,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         hotkeys.setTerminalTyping(true)
         let typingState = HotKeyAction.allCases.map { "\($0.rawValue)=\(hotkeys.isActive($0))" }.joined(separator: " ")
         let ctrlOnlyOff = HotKeyAction.allCases.allSatisfy { action in
-            guard let c = combo(action), ![.terminal, .snip, .longSnip].contains(action),
+            guard let c = combo(action), ![.terminal, .snip].contains(action),
                   c.modifiers & UInt32(cmdKey) == 0 else { return true }
             return !hotkeys.isActive(action)
         }
@@ -728,7 +814,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                combo(.snip) == nil || hotkeys.isActive(.snip), typingState)
         expect("typing in a shell: other ⌘ shortcuts the terminal does not use stay, its own ones yield",
                HotKeyAction.allCases.allSatisfy { action in
-                   guard ![.snip, .longSnip].contains(action),
+                   guard ![.snip].contains(action),
                          let c = combo(action), c.modifiers & UInt32(cmdKey) != 0 else { return true }
                    let terminalKey = TerminalKeymap.shared.isBound(keyCode: c.keyCode, carbonModifiers: c.modifiers)
                    return hotkeys.isActive(action) != terminalKey || action == .terminal
@@ -832,12 +918,16 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             + "mem=\(SystemStats.bytes(Int64(stats.memoryUsed)))/\(SystemStats.bytes(Int64(stats.memoryTotal))) "
             + "disk=\(SystemStats.bytes(stats.diskUsed))/\(SystemStats.bytes(stats.diskTotal)) "
             + "ips=\(stats.localIPs.map { "\($0.name)=\($0.address)" })")
+        out.append(MainWindow.debugState)
+        out.append(MenuBarPanel.shared.debugState)
         out.append("-- pages --")
         out.append(FloatingDockPanel.clipboard.debugState)
         out.append("pins = \(PinnedImageWindow.count) lastDebug = \(lastDebug)")
         out.append("appActive = \(NSApp.isActive) keyWindow = \(NSApp.keyWindow.map { "\(type(of: $0))" } ?? "nil")")
         out.append("-- status icon --")
         out.append(statusRunner?.debugState ?? "(no status item)")
+        out.append("statusIcon menuBar=\(StatusIcon.inMenuBar) ball=\(StatusIcon.onBall) dock=\(StatusIcon.inDock) \(StatusIcon.shared.summary)")
+        out.append("keepAwake = \(KeepAwake.shared.statusText)")
         out.append("-- holiday --")
         out.append(Holidays.countdownText())
         out.append("-- terminal --")
@@ -863,10 +953,19 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     // MARK: Menus
 
-    /// An accessory app shows no menu bar of its own, but text fields still
-    /// rely on the Edit menu's key equivalents for ⌘X / ⌘C / ⌘V / ⌘A / ⌘Z.
+    /// The menu bar shows while the main window is in front; text fields
+    /// rely on the Edit menu's key equivalents for ⌘X / ⌘C / ⌘V / ⌘A / ⌘Z
+    /// even when it does not.
     private func setupMainMenu() {
         let main = NSMenu()
+        let appItem = NSMenuItem()
+        let app = NSMenu(title: "OmniHub")
+        app.addItem(withTitle: L("Settings…"), action: #selector(showSettings), keyEquivalent: ",").target = self
+        app.addItem(.separator())
+        app.addItem(withTitle: L("Hide OmniHub"), action: #selector(NSApplication.hide(_:)), keyEquivalent: "h")
+        app.addItem(withTitle: L("Quit OmniHub"), action: #selector(quit), keyEquivalent: "q").target = self
+        appItem.submenu = app
+        main.addItem(appItem)
         let editItem = NSMenuItem()
         let edit = NSMenu(title: "Edit")
         edit.addItem(withTitle: L("Undo"), action: Selector(("undo:")), keyEquivalent: "z")
@@ -879,19 +978,44 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         edit.addItem(withTitle: L("Select All"), action: #selector(NSText.selectAll(_:)), keyEquivalent: "a")
         editItem.submenu = edit
         main.addItem(editItem)
+        let windowItem = NSMenuItem()
+        let windows = NSMenu(title: L("Window"))
+        windows.addItem(withTitle: L("Close"), action: #selector(NSWindow.performClose(_:)), keyEquivalent: "w")
+        windows.addItem(withTitle: L("Minimize"), action: #selector(NSWindow.performMiniaturize(_:)), keyEquivalent: "m")
+        windowItem.submenu = windows
+        main.addItem(windowItem)
+        NSApp.windowsMenu = windows
         NSApp.mainMenu = main
     }
 
     private func setupStatusItem() {
         statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
         if let button = statusItem.button {
-            // The little runner; it flaps faster as memory / CPU fills up.
+            // The little buddy; it flaps faster as memory / CPU fills up.
             statusRunner = StatusRunner(button: button)
         }
         let menu = NSMenu()
         menu.delegate = self
         populate(menu)
-        statusItem.menu = menu
+        statusMenu = menu
+        // A left click opens the main window; a right click shows the menu.
+        statusItem.button?.target = self
+        statusItem.button?.action = #selector(statusItemClicked)
+        statusItem.button?.sendAction(on: [.leftMouseUp, .rightMouseUp])
+    }
+
+    @objc private func statusItemClicked() {
+        let event = NSApp.currentEvent
+        let wantsMenu = event?.type == .rightMouseUp || event?.modifierFlags.contains(.control) == true
+        guard wantsMenu else {
+            if let button = statusItem.button { MenuBarPanel.shared.toggle(from: button) }
+            return
+        }
+        MenuBarPanel.shared.close()
+        // Attached only for this click, so the next left click is ours again.
+        statusItem.menu = statusMenu
+        statusItem.button?.performClick(nil)
+        statusItem.menu = nil
     }
 
     /// Rebuilt every time the menu opens so the shortcut labels follow the
@@ -900,8 +1024,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         menu.removeAllItems()
         func key(_ action: HotKeyAction) -> String { HotKeyCenter.shared.display(for: action) }
 
+        let dashboard = addItem(menu, "Open Dashboard", "", #selector(openDashboard))
+        dashboard.image = NSImage(systemSymbolName: "rectangle.grid.2x2", accessibilityDescription: nil)
+        menu.addItem(.separator())
         addItem(menu, "Screenshot", key(.snip), #selector(snipNormal))
-        addItem(menu, "Scrolling Screenshot", key(.longSnip), #selector(snipLong))
+        addItem(menu, "Scrolling Screenshot", "", #selector(snipLong))
         addItem(menu, "Pin Clipboard Image", key(.pinClipboard), #selector(pinClipboard))
         addItem(menu, "Close All Pins", "", #selector(closePins))
         menu.addItem(.separator())
@@ -911,7 +1038,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         addItem(menu, "Activity", key(.activity), #selector(showActivity))
         menu.addItem(.separator())
         addItem(menu, "Show / Hide Dock", key(.dock), #selector(toggleDock))
+        let awake = addItem(menu, "Keep Awake", "", #selector(noop))
+        awake.submenu = KeepAwake.shared.menu(target: self, action: #selector(keepAwakePicked(_:)))
+        awake.state = KeepAwake.shared.isOn ? .on : .off
         addItem(menu, "Play / Pause", key(.playPause), #selector(togglePlayback))
+        let speed = addItem(menu, "Network Speed in Menu Bar", "", #selector(toggleNetSpeed))
+        speed.state = StatusRunner.showsNetSpeed ? .on : .off
         menu.addItem(.separator())
         // Only while a newer version is out; checking needs no click.
         if let update = UpdateChecker.shared.actionTitle {
@@ -924,6 +1056,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
         addItem(menu, "Settings…", "", #selector(showSettings))
         addItem(menu, "Quit OmniHub", "", #selector(quit))
+    }
+
+    @objc private func openDashboard() { MainWindow.openDashboard() }
+
+    @objc private func toggleNetSpeed() {
+        UserDefaults.standard.set(!StatusRunner.showsNetSpeed, forKey: StatusRunner.netSpeedKey)
+        NotificationCenter.default.post(name: .settingsChanged, object: nil)
     }
 
     @discardableResult
@@ -941,7 +1080,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private func registerHotKeys() {
         let center = HotKeyCenter.shared
         center.setHandler(.snip) { [weak self] in self?.startSnip(autoScroll: false) }
-        center.setHandler(.longSnip) { [weak self] in self?.startSnip(autoScroll: true) }
         center.setHandler(.pinClipboard) { PinnedImageWindow.pinClipboard() }
         center.setHandler(.clipboard) { FloatingDockPanel.open(.clipboard) }
         center.setHandler(.terminal) { FloatingDockPanel.open(.terminal) }
@@ -1010,6 +1148,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     @objc private func updateNow() { UpdateChecker.shared.updateNow() }
+    @objc private func noop() {}
+    @objc private func keepAwakePicked(_ sender: NSMenuItem) {
+        KeepAwake.shared.choose(sender.tag < 0 ? nil : sender.tag)
+    }
     @objc private func quit() { NSApp.terminate(nil) }
 }
 

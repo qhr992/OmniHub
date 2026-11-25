@@ -66,6 +66,7 @@ enum TabSelfTest {
         case is NSSlider: return "slider"
         case is NSSegmentedControl: return "segments"
         case is NSTableView: return "list"
+        case let row as SidebarRow: return "category(\(row.itemTitle))"
         case let button as NSButton:
             return button.image != nil && button.imagePosition == .imageOnly || button.title.isEmpty
                 ? "button(\(button.toolTip ?? "?"))" : "button(\(button.title))"
@@ -81,7 +82,8 @@ enum TabSelfTest {
             guard !view.isHidden else { return }
             if view !== scope, view is TabScope { return }
             if let control = view as? NSControl {
-                let label = (control as? NSTextField).map { !$0.isEditable } ?? false
+                // Labels and pictures (badges, previews) take no input.
+                let label = (control as? NSTextField).map { !$0.isEditable } ?? (control as? NSImageView).map { !$0.isEditable } ?? false
                 if control.isEnabled, !label, !(control is NSScroller), control.bounds.width > 0 {
                     result.append(control)
                 }
@@ -128,6 +130,12 @@ enum TabSelfTest {
         let missing = controls(in: scope).filter { control in !stops.contains { $0 === control } }
         check("\(title): every control is a Tab stop", missing.isEmpty, "skipped \(missing.map(name))")
         let ordered = layoutOrder ?? stops
+        // Tabbing scrolled the page to its last control; compare unscrolled.
+        for view in ordered {
+            guard let scroll = view.enclosingScrollView, scroll.isDescendant(of: scope) else { continue }
+            scroll.contentView.scroll(to: .zero)
+            scroll.reflectScrolledClipView(scroll.contentView)
+        }
         check("\(title): the order follows the layout", inLayoutOrder(ordered),
               "\(ordered.map { "\(name($0))@\(Int($0.convert($0.bounds, to: nil).midY))" })")
         return stops
@@ -142,10 +150,14 @@ enum TabSelfTest {
             check("settings page is in the card", false)
             return
         }
-        let titles = ["General", "Shortcuts", "Screenshot", "Clipboard", "Agenda", "Dock", "Activity", "Terminal"]
-        for (index, title) in titles.enumerated() {
+        for (index, title) in pane.tabTitles.enumerated() {
             pane.select(tab: index)
-            walk("Settings › \(title)", scope: pane, window: window)
+            pane.layoutSubtreeIfNeeded()
+            // Only the topic's own controls, top to bottom (the overview is hidden).
+            let stops = TabOrder.stops(in: pane)
+            check("Settings › \(title): no overview cards among the Tab stops",
+                  !stops.contains { $0 is SettingsTopicRow }, "\(stops.prefix(6).map(name))")
+            walk("Settings › \(title)", scope: pane, window: window, layoutOrder: stops)
         }
         // Space works a focused check box (pressed twice: the setting is left as it was).
         pane.select(tab: 2)
@@ -161,21 +173,29 @@ enum TabSelfTest {
         } else {
             check("Settings: Space toggles the focused check box", false, "no Magnifier box")
         }
-        // ← / → on the focused tab strip switch the settings tab.
-        if let strip = TabOrder.stops(in: pane).first as? NSSegmentedControl {
-            window.makeFirstResponder(strip)
-            key(window, code: 124, characters: "\u{F703}")
-            let right = strip.selectedSegment
-            key(window, code: 123, characters: "\u{F702}")
-            check("Settings: ← / → on the tab strip switch tabs", right == 3 && strip.selectedSegment == 2,
-                  "→ \(right), ← \(strip.selectedSegment)")
+        // The overview: Tab reaches every card in order; the arrows move between them.
+        pane.showOverview()
+        pane.layoutSubtreeIfNeeded()
+        let cards = TabOrder.stops(in: pane).compactMap { $0 as? SettingsTopicRow }
+        check("Settings overview: the \(pane.tabCount) topics are the Tab stops, in order",
+              cards.count == pane.tabCount && cards.map(\.topicTitle) == pane.tabTitles, "\(cards.map(\.topicTitle))")
+        if cards.count > 4 {
+            window.makeFirstResponder(cards[1])
+            key(window, code: 125, characters: "\u{F701}")
+            let down = window.focusedControl === cards[2]
+            key(window, code: 125, characters: "\u{F701}")
+            key(window, code: 126, characters: "\u{F700}")
+            let up = window.focusedControl === cards[2]
+            key(window, code: 36, characters: "\r")
+            check("Settings overview: ↓ / ↑ move along the list, Return opens a topic",
+                  down && up && !pane.isOverview && pane.selectedTab == 2,
+                  "↓ \(down) ↑ \(up) tab \(pane.selectedTab)")
         }
-
-        // Nothing focused yet: Tab starts at the top of the page.
+        pane.showOverview()
         window.makeFirstResponder(nil)
         press(window)
-        check("Settings: with nothing focused, Tab starts at the tab strip",
-              window.focusedControl is NSSegmentedControl, "at \(name(window.focusedControl))")
+        check("Settings overview: with nothing focused, Tab starts at the first card",
+              cards.first != nil && window.focusedControl === cards.first, "at \(name(window.focusedControl))")
     }
 
     private static func agenda() {

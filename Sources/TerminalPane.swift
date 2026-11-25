@@ -17,7 +17,7 @@ final class TerminalPane: NSView, DockPage {
     private let container = NSView()
     private var infoHeight: NSLayoutConstraint!
     private var connectionsButton: NSButton!
-    private var transfersButton: NSButton!
+    private var transfersButton: TransferProgressButton!
     private var forwardButton: NSButton!
     private var sftpButton: NSButton!
     private var reconnectButton: NSButton!
@@ -129,7 +129,7 @@ final class TerminalPane: NSView, DockPage {
 
         let add = iconButton("plus", "New Tab", #selector(addTabClicked))
         connectionsButton = iconButton("server.rack", "Connections", #selector(toggleConnections))
-        transfersButton = iconButton("arrow.down.circle", "Recent Downloads", #selector(toggleTransfers), size: 13)
+        transfersButton = TransferProgressButton(target: self, action: #selector(toggleTransfers), label: L("Recent Downloads"))
         let gear = iconButton("gearshape", "Terminal Settings: Connections, Vault, Proxies", #selector(toggleSettings), size: 13)
         let actions = NSStackView(views: [add, connectionsButton, transfersButton])
         actions.orientation = .horizontal
@@ -431,8 +431,8 @@ final class TerminalPane: NSView, DockPage {
     }
 
     @objc private func transfersChanged() {
-        let running = TransferCenter.shared.items.contains { $0.state == .running }
-        transfersButton.contentTintColor = running ? .systemBlue : NSColor(white: 1, alpha: 0.78)
+        let progress = TransferCenter.shared.progress
+        transfersButton.update(running: progress.running, fraction: progress.fraction)
     }
 
     // MARK: SFTP drawer
