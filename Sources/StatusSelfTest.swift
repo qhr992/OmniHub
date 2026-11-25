@@ -52,15 +52,25 @@ enum StatusSelfTest {
                 .contains { $0.contains("pid \(getpid())(") && $0.contains("OmniHub: Keep Awake") }
         }
         awake.turnOn(seconds: 1.5)
-        check("Keep Awake on: macOS lists the assertion", awake.isOn && held())
+        check("Display Sleep off: macOS lists the assertion", awake.isOn && held())
         wait(3) { !awake.isOn }
         check("it ends by itself when the time is up, and the assertion is gone", !awake.isOn && !held())
+        check("Display Sleep on: \"\(awake.statusText)\" / \"\(awake.summary)\"",
+              awake.statusText == L("On") && awake.summary == L("Display Sleep"))
         awake.choose(30)
-        check("30 minutes: \"\(awake.statusText)\"", awake.statusText == L("%ld min left", 30))
+        check("off for 30 minutes: \"\(awake.statusText)\" / \"\(awake.summary)\"",
+              awake.statusText == L("Off, back on in %ld min", 30) && awake.summary == L("Display sleep back in %ld min", 30))
         awake.choose(0)
-        check("until turned off: \"\(awake.statusText)\"", awake.isOn && awake.until == .distantFuture)
+        check("off until turned on: \"\(awake.statusText)\"", awake.isOn && awake.until == .distantFuture
+                && awake.summary == L("Display Sleep Off"))
+        let sink = MenuSink()
+        let menu = awake.menu(target: sink, action: #selector(MenuSink.pick(_:)))
+        check("menu: On first, then the ways of turning it off (\(menu.items.map(\.title)))",
+              menu.items.first?.title == L("On") && menu.items.first?.state == .off
+                && menu.items.last?.title == L("Off Until Turned On") && menu.items.last?.state == .on)
         awake.choose(nil)
-        check("turned off from the menu: assertion released", !awake.isOn && !held())
+        check("turned back on from the menu: assertion released, On ticked", !awake.isOn && !held()
+                && awake.menu(target: sink, action: #selector(MenuSink.pick(_:))).items.first?.state == .on)
     }
 
     // MARK: Battery
@@ -453,14 +463,30 @@ enum StatusSelfTest {
 
     private static func menuBar(pictures: URL?) {
         let icon = StatusRunner.makeFrames()[0]
-        let wide = StatusRunner.compose(icon, up: "1.2 MB/s", down: "88 KB/s")
-        let other = StatusRunner.compose(icon, up: "0 B/s", down: "888.8 MB/s")
-        check("network speed: a fixed-width column right of the icon (\(icon.size.width) → \(wide.size.width))",
-              wide.size.width > icon.size.width + 40 && wide.size.width == other.size.width
-                && wide.isTemplate && wide.size.height >= icon.size.height)
+        let samples: [(Double, String)] = [(0, "0.0 K/s"), (300, "0.3 K/s"), (88 * 1024, "88.0 K/s"),
+                                           (999.9 * 1024, "999.9 K/s"), (999.97 * 1024, "1.0 M/s"),
+                                           (1.25 * 1024 * 1024, "1.2 M/s"), (5e12, "999.9 M/s")]
+        let shown = samples.map { StatusRunner.menuBarText($0.0) }
+        check("network speed: one decimal, K/s or M/s, at most three figures before the point (\(shown))",
+              shown == samples.map(\.1))
+        let wide = StatusRunner.compose(icon, up: 1.2 * 1024 * 1024, down: 88 * 1024)
+        let other = StatusRunner.compose(icon, up: 0, down: 888.8 * 1024 * 1024)
+        let layout = StatusRunner.speedLayout
+        check("network speed: a fixed column right of the icon, narrower than before (\(icon.size.width) → \(wide.size.width))",
+              wide.size.width > icon.size.width + 30 && wide.size.width < icon.size.width + 44
+                && wide.size.width == other.size.width && wide.isTemplate && wide.size.height >= icon.size.height)
         let top = pixelRows(wide).filter { $0 >= Int(wide.size.height) }.count
         let bottom = pixelRows(wide).filter { $0 < Int(wide.size.height) }.count
         check("network speed: upload above, download below (ink \(top) / \(bottom))", top > 10 && bottom > 10)
+        // Only the figures move: from the decimal digit on, two different rates in the same unit draw the same.
+        let figures = icon.size.width + StatusRunner.iconGap
+        let unit = figures + layout.unitX - 0.5
+        let a = StatusRunner.compose(icon, up: 1.5 * 1024, down: 2 * 1024)
+        let b = StatusRunner.compose(icon, up: 431.5 * 1024, down: 72.0 * 1024)
+        let c = StatusRunner.compose(icon, up: 7.1 * 1024, down: 3.6 * 1024 * 1024)
+        check("network speed: the unit and arrow stay put as figures change",
+              columns(a, from: unit) == columns(b, from: unit) && columns(a, from: figures) != columns(b, from: figures)
+                && columns(a, from: unit) != columns(c, from: unit))
         if let pictures { write(wide, size: 6, to: pictures.appendingPathComponent("menubar-speed.png")) }
 
         Prefs.set(StatusRunner.speedKey, nil)
@@ -490,6 +516,18 @@ enum StatusSelfTest {
         MenuBarPanel.debugDidHide()
     }
 
+    /// The (2×) alpha of every pixel right of `x` points, row by row.
+    private static func columns(_ image: NSImage, from x: CGFloat) -> [UInt8] {
+        guard let rep = pixels(image, size: Int(image.size.width * 2), height: Int(image.size.height * 2)) else { return [] }
+        var out: [UInt8] = []
+        for y in 0..<rep.pixelsHigh {
+            for column in Int(x * 2)..<rep.pixelsWide {
+                out.append(UInt8(((rep.colorAt(x: column, y: y)?.alphaComponent ?? 0) * 255).rounded()))
+            }
+        }
+        return out
+    }
+
     /// The (2×) pixel rows holding ink, bottom row 0.
     private static func pixelRows(_ image: NSImage) -> [Int] {
         guard let rep = pixels(image, size: Int(image.size.width * 2), height: Int(image.size.height * 2)) else { return [] }
@@ -509,14 +547,20 @@ enum StatusSelfTest {
         _ = FloatingDockPanel.debugCardSize(page: .activity, x: 0.5, y: 0)
         wait(3) { FloatingDockPanel.debugActivity.contains { $0.hasPrefix("Top app") } }
         let rows = FloatingDockPanel.debugActivity
-        for prefix in ["Keep Awake", "Network", "Battery", "Top app"] {
+        for prefix in ["Display Sleep", "Network", "Battery", "Top app"] {
             let row = rows.first { $0.hasPrefix(prefix) }
             check("activity page: \(row ?? prefix + " missing")",
                   row != nil || (prefix == "Battery" && BatteryInfo.read() == nil))
         }
         if let pictures { _ = FloatingDockPanel.snapshot(to: pictures.appendingPathComponent("activity.png")) }
 
-        Prefs.set(SettingsPane.cardOpacityKey, 55)
+        Prefs.set(SettingsPane.cardOpacityKey, 80)
+        let transparency = PrefSlider(key: SettingsPane.cardOpacityKey, fallback: 100, range: 30...100, suffix: "%", mirror: 100)
+        let before = transparency.debugShown
+        transparency.debugSlide(to: 45)
+        check("Transparency: shows 100 − opacity (\(before.label), \(before.range)); 45 % stores opacity \(Prefs.int(SettingsPane.cardOpacityKey, 0))",
+              before.value == 20 && before.range == 0...70 && before.label == "20%"
+                && Prefs.int(SettingsPane.cardOpacityKey, 0) == 55)
         NotificationCenter.default.post(name: .settingsChanged, object: nil)
         let half = FloatingDockPanel.debugCardGlass
         Prefs.set(SettingsPane.cardOpacityKey, 100)
@@ -537,4 +581,9 @@ enum StatusSelfTest {
             }
         }
     }
+}
+
+/// A target for menus built in tests.
+private final class MenuSink: NSObject {
+    @objc func pick(_ sender: Any?) {}
 }

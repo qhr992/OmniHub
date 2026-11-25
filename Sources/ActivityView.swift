@@ -1,6 +1,6 @@
 import AppKit
 
-/// Activity page: Keep Awake, a tile with a live chart per metric (CPU,
+/// Activity page: Display Sleep, a tile with a live chart per metric (CPU,
 /// GPU, memory, disk, network) and one for the battery, the busiest apps,
 /// then the IP addresses as plain rows. Each can be switched off in settings.
 final class ActivityView: NSView {
@@ -79,7 +79,7 @@ final class ActivityView: NSView {
         debugRows = []
         if let row = keepAwakeRow {
             row.sync()
-            debugRows.append("Keep Awake: \(KeepAwake.shared.statusText)")
+            debugRows.append("Display Sleep: \(KeepAwake.shared.statusText)")
         }
         if let tile = tiles["cpu"] {
             tile.update(value: percent(stats.cpu), detail: L("%ld cores", ProcessInfo.processInfo.activeProcessorCount), samples: history.cpu, ceiling: 1)

@@ -1,6 +1,6 @@
 import AppKit
 
-// Parts of the activity page beyond the metric tiles: Keep Awake, the
+// Parts of the activity page beyond the metric tiles: Display Sleep, the
 // battery and the busiest apps.
 
 /// A rounded, faintly lit surface, like the metric tiles.
@@ -36,9 +36,9 @@ class ActivitySurface: NSView {
     }
 }
 
-// MARK: - Keep Awake
+// MARK: - Display Sleep
 
-/// "Keep Awake", what it is doing, and a menu of lengths.
+/// "Display Sleep", what it is doing, and a menu: On, or off for a while.
 final class KeepAwakeRow: ActivitySurface {
     private let icon = ActivitySurface.symbol("cup.and.saucer.fill", tint: NSColor(white: 1, alpha: 0.6))
     private let status = ActivitySurface.label("", size: 11, alpha: 0.6)
@@ -46,15 +46,15 @@ final class KeepAwakeRow: ActivitySurface {
 
     override init() {
         super.init()
-        let title = ActivitySurface.label(L("Keep Awake"), size: 12, weight: .semibold)
+        let title = ActivitySurface.label(KeepAwake.name, size: 12, weight: .semibold)
         picker.controlSize = .small
         picker.font = .systemFont(ofSize: 11)
-        picker.addItem(withTitle: L("Off"))
+        picker.addItem(withTitle: L("On"))
         for minutes in KeepAwake.choices { picker.addItem(withTitle: KeepAwake.title(minutes: minutes)) }
         picker.target = self
         picker.action = #selector(picked)
         picker.translatesAutoresizingMaskIntoConstraints = false
-        picker.toolTip = L("Keeps the display from sleeping while you are away")
+        picker.toolTip = L("Turned off, the display stays on while you are away")
         for view in [icon, title, status, picker] as [NSView] { addSubview(view) }
         status.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
         NSLayoutConstraint.activate([

@@ -95,12 +95,20 @@ final class PrefSlider: NSStackView {
 
     private let suffix: String
 
+    /// Shows and sets `mirror - stored` when set: a setting named for the
+    /// opposite of what is stored ("Transparency" over a stored opacity).
+    private let mirror: Int?
+
     init(key: String, fallback: Int, range: ClosedRange<Int>, width: CGFloat = 260, continuous: Bool = true,
-         suffix: String = "") {
+         suffix: String = "", mirror: Int? = nil) {
         self.key = key
         self.suffix = suffix
-        slider = FocusSlider(value: Double(Prefs.int(key, fallback)), minValue: Double(range.lowerBound),
-                          maxValue: Double(range.upperBound), target: nil, action: nil)
+        self.mirror = mirror
+        let stored = Prefs.int(key, fallback)
+        let shown = mirror.map { $0 - stored } ?? stored
+        let low = mirror.map { $0 - range.upperBound } ?? range.lowerBound
+        let high = mirror.map { $0 - range.lowerBound } ?? range.upperBound
+        slider = FocusSlider(value: Double(shown), minValue: Double(low), maxValue: Double(high), target: nil, action: nil)
         super.init(frame: .zero)
         orientation = .horizontal
         spacing = 8
@@ -122,8 +130,18 @@ final class PrefSlider: NSStackView {
     @objc private func changed() {
         let value = Int(slider.doubleValue.rounded())
         valueLabel.stringValue = "\(value)\(suffix)"
-        Prefs.set(key, value)
+        Prefs.set(key, mirror.map { $0 - value } ?? value)
         NotificationCenter.default.post(name: .settingsChanged, object: nil)
+    }
+
+    /// Test hooks: the value shown, its range, and the slider dragged to `value`.
+    var debugShown: (value: Int, range: ClosedRange<Int>, label: String) {
+        (Int(slider.doubleValue), Int(slider.minValue)...Int(slider.maxValue), valueLabel.stringValue)
+    }
+
+    func debugSlide(to value: Int) {
+        slider.doubleValue = Double(value)
+        changed()
     }
 }
 
@@ -516,7 +534,7 @@ final class SettingsPane: NSView, DockPage {
                     PrefCheckbox("Disk (usage and I/O)", key: "activity.disk", fallback: true)),
                 row(PrefCheckbox("Network speed", key: "activity.network", fallback: true),
                     PrefCheckbox("Battery", key: "activity.battery", fallback: true),
-                    PrefCheckbox("Keep Awake", key: "activity.keepAwake", fallback: true),
+                    PrefCheckbox("Display Sleep", key: "activity.keepAwake", fallback: true),
                     PrefCheckbox("Top apps", key: "activity.topApps", fallback: true)),
                 row(PrefCheckbox("Local IP addresses", key: "activity.ip", fallback: true),
                     PrefCheckbox("Public IP (asks api.ipify.org)", key: "activity.publicIP", fallback: false)),
@@ -685,8 +703,14 @@ final class SettingsPane: NSView, DockPage {
     @objc private func clearHistory() { ClipboardStore.shared.clearRecent() }
     @objc private func clearCompleted() { TaskStore.shared.clearCompleted() }
     @objc private func toggleDockVisible() {
-        Prefs.set("dock.hidden", dockVisible.state == .off)
+        FloatingDockPanel.setVisible(dockVisible.state == .on)
         refreshStatus()
+    }
+
+    /// Test hook: the Show dock checkbox clicked to `on`.
+    func debugSetDockShown(_ on: Bool) {
+        dockVisible.state = on ? .on : .off
+        if let action = dockVisible.action { NSApp.sendAction(action, to: dockVisible.target, from: dockVisible) }
     }
     @objc func chooseIcon() { FloatingDockPanel.chooseIcon() }
     @objc func resetIcon() { FloatingDockPanel.resetIcon() }

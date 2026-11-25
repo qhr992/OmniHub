@@ -132,6 +132,30 @@ enum DockSelfTest {
         RunLoop.current.run(until: Date().addingTimeInterval(0.6))
         MediaObserver.shared.debugActivateHook = nil
         check("a click on the player's cover opens the playing app", opened == 1, "opened \(opened)")
+        // Settings › Show dock: off hides the ball at once, on brings it back.
+        FloatingDockPanel.show()
+        let settings = FloatingDockPanel.settings
+        settings.debugSetDockShown(false)
+        let hiddenNow = !FloatingDockPanel.debugVisible && Prefs.bool("dock.hidden")
+        settings.debugSetDockShown(true)
+        let backNow = FloatingDockPanel.debugVisible && !Prefs.bool("dock.hidden")
+        settings.debugSetDockShown(false)
+        settings.debugSetDockShown(true)
+        check("Settings › Show dock: off hides the ball, on shows it again, twice over (\(hiddenNow), \(backNow))",
+              hiddenNow && backNow && FloatingDockPanel.debugVisible)
+        // Home (in the window) and the menu bar panel share one player: cover and words open the app.
+        let homePlayer = NowPlayingTile()
+        homePlayer.update()
+        let clicks = homePlayer.debugClicks()
+        opened = 0
+        MediaObserver.shared.debugActivateHook = { opened += 1 }
+        homePlayer.debugOpen()
+        let panel = MenuBarPanel.debugContent()
+        panel.debugOpenPlayer()
+        MediaObserver.shared.debugActivateHook = nil
+        MenuBarPanel.debugDidHide()
+        check("Home's and the menu bar panel's player open the playing app (cover \(clicks.cover), words \(clicks.words))",
+              clicks.cover && clicks.words && opened == 2, "opened \(opened)")
         // ---- music starts / stops with the card closed: ball and pill morph
         let morph = FloatingDockPanel.debugPillMorph()
         func between(_ widths: [CGFloat]) -> Int { widths.filter { $0 > morph.ball + 1 && $0 < morph.pill - 1 }.count }

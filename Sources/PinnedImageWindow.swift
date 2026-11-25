@@ -24,7 +24,7 @@ enum OCR {
 ///
 /// Drag to move · scroll, pinch, or the − / ＋ buttons (shown while the pointer
 /// is over the image) to zoom · the × button, double-click or Esc to close ·
-/// right-click for copy / save / opacity. Stays visible on every Space and over
+/// right-click for copy / save / translucency. Stays visible on every Space and over
 /// full-screen apps.
 final class PinnedImageWindow: NSPanel, EscDismissable {
     private static var open: [PinnedImageWindow] = []
@@ -199,7 +199,10 @@ final class PinnedImageWindow: NSPanel, EscDismissable {
         add("Zoom In", #selector(zoomInAction))
         add("Zoom Out", #selector(zoomOutAction))
         add("Actual Size", #selector(actualSize))
-        add(alphaValue < 1 ? "Opaque" : "Translucent", #selector(toggleOpacity))
+        let translucent = NSMenuItem(title: L("Translucent"), action: #selector(toggleOpacity), keyEquivalent: "")
+        translucent.target = self
+        translucent.state = alphaValue < 1 ? .on : .off
+        menu.addItem(translucent)
         menu.addItem(.separator())
         add("Close", #selector(closePin))
         add("Close All Pins", #selector(closeEvery))

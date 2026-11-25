@@ -1,7 +1,7 @@
 import AppKit
 
 /// A left click on the menu bar icon: a panel drops down with the player on
-/// top and the system below as on the Activity page (Keep Awake, then CPU,
+/// top and the system below as on the Activity page (Display Sleep, then CPU,
 /// memory, GPU, disk, network and battery with their charts), ending in a
 /// way into the dashboard.
 final class MenuBarPanel: NSObject, NSPopoverDelegate {
@@ -94,6 +94,11 @@ final class MenuBarPanelView: NSView {
             MenuBarPanel.shared.close()
             MainWindow.open(.settings)
         }
+        // The player opens its app; the panel gets out of the way.
+        playing.onOpen = {
+            MenuBarPanel.shared.close()
+            MediaObserver.shared.activateOwner()
+        }
         let footer = NSStackView(views: [open, NSView(), settings])
         let stack = NSStackView(views: [playing, system, footer])
         stack.orientation = .vertical
@@ -143,9 +148,12 @@ final class MenuBarPanelView: NSView {
     @objc private func statsChanged() { system.update() }
 
     var debugText: String { "playing=\(playing.debugText) \(system.debugText)" }
+
+    /// Test hook: a click on the player's cover, through to the app switch.
+    func debugOpenPlayer() { playing.debugOpen() }
 }
 
-/// The system as on the Activity page: Keep Awake, then CPU, memory, GPU,
+/// The system as on the Activity page: Display Sleep, then CPU, memory, GPU,
 /// disk, network and battery as tiles with their recent history drawn.
 final class PanelMetrics: NSStackView {
     private static let gap: CGFloat = 8

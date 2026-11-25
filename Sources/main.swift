@@ -1038,9 +1038,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         addItem(menu, "Activity", key(.activity), #selector(showActivity))
         menu.addItem(.separator())
         addItem(menu, "Show / Hide Dock", key(.dock), #selector(toggleDock))
-        let awake = addItem(menu, "Keep Awake", "", #selector(noop))
+        let awake = addItem(menu, "Display Sleep", "", #selector(noop))
         awake.submenu = KeepAwake.shared.menu(target: self, action: #selector(keepAwakePicked(_:)))
-        awake.state = KeepAwake.shared.isOn ? .on : .off
+        awake.state = KeepAwake.shared.isOn ? .off : .on
         addItem(menu, "Play / Pause", key(.playPause), #selector(togglePlayback))
         let speed = addItem(menu, "Network Speed in Menu Bar", "", #selector(toggleNetSpeed))
         speed.state = StatusRunner.showsNetSpeed ? .on : .off
