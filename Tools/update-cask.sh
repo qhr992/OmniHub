@@ -1,11 +1,14 @@
 #!/bin/bash
 # Points the Homebrew cask (qhr992/homebrew-tap, Casks/omnihub.rb) at an
 # OmniHub release, then commits and pushes the tap:
-#   Tools/update-cask.sh [version] [--if-released] [--dry-run]
+#   Tools/update-cask.sh [version] [--if-released] [--wait] [--dry-run]
 #
 # version        default: the version of build/OmniHub.app
 # --if-released  a release that is not on GitHub yet is not an error: the
 #                cask is left alone (Tools/package.sh runs it this way)
+# --wait         keep trying for up to 10 minutes while the dmg is not there:
+#                a file just uploaded can take a while to be served everywhere
+#                (the release step runs it this way)
 # --dry-run      show the change to the cask, commit and push nothing
 #
 # The cask only ever points at a dmg that is on GitHub: the release's dmg
@@ -19,11 +22,12 @@ REPO="qhr992/OmniHub"
 TAP="${OMNIHUB_TAP:-$(cd .. && pwd)/homebrew-tap}"
 CASK="Casks/omnihub.rb"
 
-version="" if_released=0 dry_run=0
+version="" if_released=0 dry_run=0 wait=0
 for arg in "$@"; do
   case "$arg" in
     --if-released) if_released=1 ;;
     --dry-run) dry_run=1 ;;
+    --wait) wait=1 ;;
     -*) echo "unknown option: $arg" >&2; exit 2 ;;
     *) version="${arg#v}" ;;
   esac
@@ -47,7 +51,16 @@ skip() {
 dmg="OmniHub-$version.dmg"
 tmp="$(mktemp -d)"
 trap 'rm -rf "$tmp"' EXIT
-code="$(curl -sSL -o "$tmp/$dmg" -w '%{http_code}' "https://github.com/$REPO/releases/download/v$version/$dmg" || true)"
+fetch() { curl -sSL -o "$tmp/$dmg" -w '%{http_code}' "https://github.com/$REPO/releases/download/v$version/$dmg" || true; }
+code="$(fetch)"
+if (( wait )); then
+  deadline=$(( $(date +%s) + 600 ))
+  while [[ "$code" != 200 ]] && (( $(date +%s) < deadline )); do
+    say "$dmg not served yet (HTTP ${code:-none}); trying again in 15 s"
+    sleep 15
+    code="$(fetch)"
+  done
+fi
 case "$code" in
   200) ;;
   404) skip "v$version has no $dmg on GitHub yet; cask not updated. Run Tools/update-cask.sh $version once it is released." ;;
