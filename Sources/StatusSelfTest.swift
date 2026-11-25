@@ -473,13 +473,13 @@ enum StatusSelfTest {
         let other = StatusRunner.compose(icon, up: 0, down: 888.8 * 1024 * 1024)
         let layout = StatusRunner.speedLayout
         check("network speed: a fixed column right of the icon, narrower than before (\(icon.size.width) → \(wide.size.width))",
-              wide.size.width > icon.size.width + 30 && wide.size.width < icon.size.width + 50
+              wide.size.width > icon.size.width + 30 && wide.size.width < icon.size.width + 44
                 && wide.size.width == other.size.width && wide.isTemplate && wide.size.height >= icon.size.height)
         let top = pixelRows(wide).filter { $0 >= Int(wide.size.height) }.count
         let bottom = pixelRows(wide).filter { $0 < Int(wide.size.height) }.count
         check("network speed: upload above, download below (ink \(top) / \(bottom))", top > 10 && bottom > 10)
         // Only the figures move: from the decimal digit on, two different rates in the same unit draw the same.
-        let figures = icon.size.width + 3
+        let figures = icon.size.width + StatusRunner.iconGap
         let unit = figures + layout.unitX - 0.5
         let a = StatusRunner.compose(icon, up: 1.5 * 1024, down: 2 * 1024)
         let b = StatusRunner.compose(icon, up: 431.5 * 1024, down: 72.0 * 1024)

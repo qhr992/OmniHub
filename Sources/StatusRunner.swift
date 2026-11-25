@@ -105,9 +105,9 @@ final class StatusRunner {
 
     // MARK: Network speed
 
-    /// Condensed, with figures of one width: the column stays narrow.
+    /// Compressed, with figures of one width: the column stays narrow.
     private static let speedFont: NSFont = {
-        let base = NSFont.systemFont(ofSize: 9, weight: .semibold, width: .condensed)
+        let base = NSFont.systemFont(ofSize: 9, weight: .semibold, width: .compressed)
         let figures = base.fontDescriptor.addingAttributes([.featureSettings: [[
             NSFontDescriptor.FeatureKey.typeIdentifier: kNumberSpacingType,
             NSFontDescriptor.FeatureKey.selectorIdentifier: kMonospacedNumbersSelector]]])
@@ -117,9 +117,11 @@ final class StatusRunner {
 
     /// Where each part of a rate line goes, so only the figures move: the
     /// whole number ends at the point, `pointX` (room for "888"), the decimal
-    /// starts there, the unit at `unitX`, the arrow at `arrowX`; `width` is
-    /// the whole column.
-    struct SpeedLayout { let pointX, unitX, arrowX, width: CGFloat }
+    /// starts there, the unit at `unitX`; the arrow sits `arrowGap` after the
+    /// unit; `width` is the whole column (room for "M/s").
+    struct SpeedLayout { let pointX, unitX, width: CGFloat }
+    static let arrowGap: CGFloat = 0.5
+    static let iconGap: CGFloat = 2
     static let speedLayout: SpeedLayout = {
         func width(_ text: String) -> CGFloat { (text as NSString).size(withAttributes: [.font: speedFont]).width }
         let whole = ceil(width("888"))
@@ -127,9 +129,8 @@ final class StatusRunner {
         let unit = max(width("K/s"), width("M/s"))
         let arrow = NSImage(systemSymbolName: "arrow.down", accessibilityDescription: nil)?
             .withSymbolConfiguration(arrowConfig)?.size.width ?? 6
-        let unitX = ceil(whole + decimal + 1.5)
-        let arrowX = ceil(unitX + unit + 1)
-        return SpeedLayout(pointX: whole, unitX: unitX, arrowX: arrowX, width: ceil(arrowX + arrow))
+        let unitX = ceil(whole + decimal + 1)
+        return SpeedLayout(pointX: whole, unitX: unitX, width: ceil(unitX + unit + arrowGap + arrow))
     }()
 
     /// A rate as the menu bar shows it: one decimal, in K/s below 1000 K/s,
@@ -155,7 +156,7 @@ final class StatusRunner {
     /// The icon, a gap, then the two rates (bytes a second) in a column of fixed width.
     static func compose(_ icon: NSImage, up: Double, down: Double) -> NSImage {
         let rates = (up: menuBarRate(up), down: menuBarRate(down))
-        let gap: CGFloat = 3
+        let gap = iconGap
         let height = max(icon.size.height, 22)
         let size = NSSize(width: icon.size.width + gap + speedLayout.width, height: height)
         // A template icon stays one: everything in black, tinted by the menu bar.
@@ -185,10 +186,13 @@ final class StatusRunner {
         if parts.count > 1 {
             ("." + parts[1] as NSString).draw(at: NSPoint(x: origin.x + layout.pointX, y: origin.y - 0.5), withAttributes: attributes)
         }
-        (rate.unit as NSString).draw(at: NSPoint(x: origin.x + layout.unitX, y: origin.y - 0.5), withAttributes: attributes)
+        let unit = rate.unit as NSString
+        unit.draw(at: NSPoint(x: origin.x + layout.unitX, y: origin.y - 0.5), withAttributes: attributes)
+        // Right after the unit, whichever it is.
+        let arrowX = layout.unitX + unit.size(withAttributes: attributes).width + arrowGap
         let config = arrowConfig.applying(NSImage.SymbolConfiguration(paletteColors: [colour]))
         if let arrow = NSImage(systemSymbolName: symbol, accessibilityDescription: nil)?.withSymbolConfiguration(config) {
-            arrow.draw(in: NSRect(x: origin.x + layout.arrowX, y: origin.y + 1.5, width: arrow.size.width, height: arrow.size.height))
+            arrow.draw(in: NSRect(x: origin.x + arrowX, y: origin.y + 1.5, width: arrow.size.width, height: arrow.size.height))
         }
     }
 
