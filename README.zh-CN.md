@@ -70,6 +70,16 @@ macOS 菜单栏工具集：截图、贴图、剪贴板历史、正在播放、�
 
 ## 安装
 
+### Homebrew
+
+```bash
+brew install --cask qhr992/tap/omnihub
+```
+
+用 Homebrew 安装时会清除下载文件的隔离标记，第一次打开不会被拦下。OmniHub 会自己更新；想通过 Homebrew 更新用 `brew upgrade --greedy`。
+
+### 手动安装
+
 1. 在 [Releases](https://github.com/qhr992/OmniHub/releases) 下载 `OmniHub-<版本>.dmg`。
 2. 打开 dmg，把 **OmniHub** 拖进「应用程序」。
 3. 打开 OmniHub。发布版使用自签名证书、没有经过 Apple 公证，所以第一次打开会被 macOS 拦下：

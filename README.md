@@ -69,6 +69,16 @@ A menu bar suite for macOS. Screenshots, pinned images, clipboard history, Now P
 
 ## Installation
 
+### Homebrew
+
+```bash
+brew install --cask qhr992/tap/omnihub
+```
+
+The cask clears the download's quarantine flag, so the first launch is not blocked. OmniHub updates itself; `brew upgrade --greedy` updates it through Homebrew.
+
+### Manually
+
 1. Download `OmniHub-<version>.dmg` from [Releases](https://github.com/qhr992/OmniHub/releases).
 2. Open it and drag **OmniHub** into **Applications**.
 3. Open OmniHub. Releases are signed with a self-signed certificate and are not notarized, so macOS blocks the first launch:
