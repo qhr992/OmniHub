@@ -2,6 +2,8 @@
 # Builds OmniHub and wraps it in one DMG to hand to someone else:
 #   dist/OmniHub-<version>.dmg  =  OmniHub.app + an Applications shortcut + Install - 安装说明.txt
 # The recipient needs nothing else (no project, no Xcode tools).
+# Once that version is released on GitHub, it also updates the Homebrew cask
+# (Tools/update-cask.sh).
 set -euo pipefail
 cd "$(dirname "$0")/.."
 
@@ -46,3 +48,7 @@ hdiutil create -quiet -volname "$NAME" -srcfolder "$STAGE" -fs HFS+ -format UDZO
 shasum -a 256 "dist/$NAME.dmg" | tee "dist/$NAME.dmg.sha256"
 codesign -dvv "$APP" 2>&1 | grep -E "^Authority" || true
 ls -lh "dist/$NAME.dmg"
+
+# Homebrew: the cask follows once this version is released on GitHub (the
+# release step runs it again right after uploading). Never fails the package.
+Tools/update-cask.sh "$VERSION" --if-released || echo "cask: not updated (see above)"
