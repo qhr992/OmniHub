@@ -141,35 +141,56 @@ enum MainSelfTest {
         }
     }
 
-    /// Settings: categories down the left, the page to their right.
+    /// Settings: every topic as a card; a card opens the topic, Back
+    /// returns to the cards, then to the page before Settings.
     private static func settings(pictures: URL?) {
-        MainWindow.open(.settings, settingsTab: 6)
-        let window = MainWindow.debugOpen(.settings)
         let pane = FloatingDockPanel.settings
-        guard let list = pane.debugCategories else {
-            check("settings has a category list", false)
+        MainWindow.open(.settings, settingsTab: 6)
+        let window = MainWindow.debugOpen(.activity)
+        MainWindow.open(.settings, settingsTab: 6)
+        check("open(.settings, tab 6) goes straight to Appearance, titled so (\(window.debugTitle))",
+              pane.selectedTab == 6 && !pane.isOverview && window.debugTitle == L("Appearance") && window.debugBackShown)
+        window.debugBack()
+        check("Back from a topic: the overview, still in Settings (\(window.debugTitle))",
+              pane.isOverview && window.page == .settings && window.debugTitle == L("Settings"))
+        guard let overview = pane.debugOverview else {
+            check("settings has an overview", false)
             return
         }
-        let rows = list.rows.map { $0.convert($0.bounds, to: nil) }
-        check("settings: \(rows.count) categories in one column",
-              rows.count == pane.tabCount && Set(rows.map { Int($0.minX) }).count == 1
-                && zip(rows, rows.dropFirst()).allSatisfy { $0.0.minY > $0.1.minY })
-        check("open(.settings, tab 6) shows Appearance, selected in the list",
-              pane.selectedTab == 6 && list.selectedIndex == 6, "tab \(pane.selectedTab) list \(list.selectedIndex)")
-        list.rows[2].performClick(nil)
-        check("clicking a category shows it", pane.selectedTab == 2 && list.selectedIndex == 2)
-        let listRight = list.convert(list.bounds, to: nil).maxX
-        let content = pane.subviews.first { $0 !== list }.map { $0.convert($0.bounds, to: nil) } ?? .zero
-        check("the settings sit to the right of the categories (\(Int(listRight)) < \(Int(content.minX)))",
-              content.minX > listRight && content.width > 400)
+        settle()
+        let cards = overview.cards.map { $0.convert($0.bounds, to: nil) }
+        let columns = Set(cards.map { Int($0.minX) }).count
+        let rows = Set(cards.map { Int($0.minY) }).count
+        check("overview: \(cards.count) topics in \(columns) columns × \(rows) rows, none empty",
+              cards.count == pane.tabCount && columns == SettingsOverview.columns
+                && rows == (cards.count + columns - 1) / columns && cards.allSatisfy { $0.width > 150 && $0.height > 80 })
+        overview.cards[2].performClick(nil)
+        check("clicking a topic opens it (\(window.debugTitle))",
+              pane.selectedTab == 2 && !pane.isOverview && window.debugTitle == L("Screenshot"))
+        pane.select(tab: 6)
+        check("one topic to another: the title follows (\(window.debugTitle))", window.debugTitle == L("Appearance"))
         if let pictures {
+            pane.showOverview()
+            settle()
+            snapshot(window, to: pictures.appendingPathComponent("main-settings-overview.png"))
             for (tab, name) in [(0, "general"), (6, "appearance")] {
                 pane.select(tab: tab)
                 settle()
                 snapshot(window, to: pictures.appendingPathComponent("main-settings-\(name).png"))
             }
         }
-        pane.select(tab: 0)
+        // Leave on a topic, scrolled down; coming back starts over.
+        pane.select(tab: 6)
+        _ = pane.debugScrollToBottom()
+        window.debugBack()
+        window.debugBack()
+        check("Back from the overview: the page before Settings", window.page == .activity && !window.debugBackShown)
+        pane.select(tab: 6)
+        _ = MainWindow.debugOpen(.settings)
+        check("entering Settings again starts at the overview", pane.isOverview && window.debugTitle == L("Settings"))
+        pane.select(tab: 6)
+        check("a topic opens at its top", pane.debugScrollOffset == 0, "offset \(pane.debugScrollOffset)")
+        pane.showOverview()
     }
 
     private static func snapshot(_ window: NSWindow, to url: URL) {

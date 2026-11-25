@@ -18,8 +18,11 @@ final class SettingsSection: NSView {
     }
 
     let content = NSStackView()
+    /// The English title (what the overview lists under its topic).
+    let title: String
 
     init(title: String, symbol: String, tint: NSColor, views: [NSView]) {
+        self.title = title
         super.init(frame: .zero)
         wantsLayer = true
         layer?.cornerRadius = 12

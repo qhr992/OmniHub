@@ -127,12 +127,17 @@ final class PrefSlider: NSStackView {
     }
 }
 
-/// Settings, in the main window: the categories down the left, the chosen
-/// one's settings on the right.
+/// Settings, in the main window: every topic as a card first; a card opens
+/// that topic's settings (Back returns to the cards).
 final class SettingsPane: NSView, DockPage {
     private let tabs = NSTabView()
-    private var categories: SidebarList?
-    static let categoryWidth: CGFloat = 168
+    /// Every topic as a card: what Settings opens on.
+    private var overview: SettingsOverview?
+    private let detail = NSView()
+    /// The overview is showing (not one topic).
+    private(set) var isOverview = true
+    /// The overview / topic switch, for the window's title and Back.
+    var onChange: (() -> Void)?
     private let loginCheckbox = FocusButton(checkboxWithTitle: L("Open at login"), target: nil, action: nil)
     private let languagePopup = FocusPopUp(frame: .zero, pullsDown: false)
     private let restartNote = NSTextField(labelWithString: L("Takes effect after OmniHub restarts."))
@@ -168,17 +173,55 @@ final class SettingsPane: NSView, DockPage {
     /// The tabs' English names (they are the identifiers).
     var tabTitles: [String] { tabs.tabViewItems.map { "\($0.identifier ?? "")" } }
 
-    func select(tab: Int) {
+    /// Opens one topic, from its top.
+    func select(tab: Int, animated: Bool = false) {
         guard tab >= 0, tab < tabs.numberOfTabViewItems else { return }
+        let moved = tab != selectedTab
         tabs.selectTabViewItem(at: tab)
-        categories?.select(tab)
+        scrollToTop()
+        // A topic to another one: the title still has to follow.
+        if !setOverview(false, animated: animated), moved { onChange?() }
         flashScroller()
+    }
+
+    /// Back to every topic.
+    func showOverview(animated: Bool = false) {
+        setOverview(true, animated: animated)
+    }
+
+    /// True when it switched (and told `onChange`).
+    @discardableResult
+    private func setOverview(_ on: Bool, animated: Bool) -> Bool {
+        let changed = on != isOverview
+        isOverview = on
+        overview?.isHidden = !on
+        detail.isHidden = on
+        if on, let focus = window?.firstResponder as? NSView, focus.isDescendant(of: detail) {
+            window?.makeFirstResponder(nil)
+        }
+        if changed { onChange?() }
+        guard animated, changed else { return changed }
+        if on {
+            overview?.animateIn()
+        } else {
+            MainWindowMotion.arrive(detail.layer, dx: MainWindowMotion.travel, dy: 0, duration: MainWindowMotion.settingsDuration)
+        }
+        return changed
+    }
+
+    private func scrollToTop() {
+        guard let scroll = shownScroll else { return }
+        scroll.contentView.scroll(to: .zero)
+        scroll.reflectScrolledClipView(scroll.contentView)
     }
 
     var selectedTab: Int { tabs.selectedTabViewItem.map { tabs.indexOfTabViewItem($0) } ?? 0 }
 
-    /// The category list (test hook).
-    var debugCategories: SidebarList? { categories }
+    /// The shown topic's name (nil on the overview).
+    var topicTitle: String? { isOverview ? nil : tabs.selectedTabViewItem?.label }
+
+    /// The topic cards (test hook).
+    var debugOverview: SettingsOverview? { overview }
 
     /// Icon and colour of each category, by its English name.
     private static func badge(_ title: String) -> (String, NSColor) {
@@ -223,10 +266,13 @@ final class SettingsPane: NSView, DockPage {
     override func layout() {
         super.layout()
         guard bounds.width > 0 else { return }
-        // Category column (168 + 14), page margins (18 + 18), a card's indent (43) and margin (14).
-        let wrap = max(200, min(560, bounds.width - Self.categoryWidth - 14 - 36 - 57))
+        // Page margins (18 + 18), a card's indent (43) and margin (14).
+        let wrap = max(200, min(640, bounds.width - 36 - 57))
         for field in hintFields where field.preferredMaxLayoutWidth != wrap { field.preferredMaxLayoutWidth = wrap }
     }
+
+    /// Test hook: how far the shown topic is scrolled.
+    var debugScrollOffset: CGFloat { shownScroll?.contentView.bounds.minY ?? 0 }
 
     /// Test hook: start recording a shortcut exactly as a click would.
     func debugRecord(_ action: HotKeyAction) -> Bool {
@@ -382,7 +428,7 @@ final class SettingsPane: NSView, DockPage {
         ])
 
         // Shortcuts
-        var hotkeyRows: [NSView] = [hint("Global shortcuts. Click a button, then press the new keys. ⌫ clears, Esc cancels.")]
+        var hotkeyRows: [NSView] = []
         for action in HotKeyAction.allCases {
             let name = label(action.title)
             name.translatesAutoresizingMaskIntoConstraints = false
@@ -406,12 +452,6 @@ final class SettingsPane: NSView, DockPage {
                 PrefCheckbox("Detect windows on hover (click selects the window)", key: "snip.detectWindows", fallback: true),
                 PrefCheckbox("Magnifier", key: "snip.magnifier", fallback: true),
                 PrefCheckbox("Show “Copied” when done", key: "snip.toast", fallback: true)
-            ]),
-            section("Scrolling Screenshot", "arrow.up.and.down.text.horizontal", Tint.blue, [
-                hint("Start from the screenshot toolbar or the menu bar menu, then scroll down yourself. It stops a few seconds after you stop, or on Esc / Done.")
-            ]),
-            section("Pins", "pin.fill", Tint.pink, [
-                hint("Zoom with scroll, pinch, or the − ＋ buttons shown on hover; × closes. Text in a pin can be selected and copied.")
             ])
         ])
 
@@ -421,14 +461,12 @@ final class SettingsPane: NSView, DockPage {
                 row(label("Keep history"), PrefPopup(key: "clipboard.maxRecent", fallback: 120,
                                                    values: [50, 120, 300, 500], suffix: "items")),
                 PrefCheckbox("Record images", key: "clipboard.images", fallback: true),
-                row(historyLabel, button("Clear History", #selector(clearHistory))),
-                hint("Starred items are kept. Double-click an item to copy it and close the card.")
+                row(historyLabel, button("Clear History", #selector(clearHistory)))
             ]),
             section("Shelf", "tray.full", Tint.orange, [
                 row(label("Keep files for"), PrefPopup(key: "shelf.days", fallback: 7,
                                                      values: ShelfStore.retentionChoices, suffix: "days")),
-                PrefCheckbox("Keep Shelf in front after a drop", key: FloatingDockPanel.shelfKeepOpenKey, fallback: true),
-                hint("Drop files on the dock ball to keep a copy on the Shelf. Older ones are deleted automatically. Off: the Shelf folds away when the pointer leaves, like a hover-opened card.")
+                PrefCheckbox("Keep Shelf in front after a drop", key: FloatingDockPanel.shelfKeepOpenKey, fallback: true)
             ])
         ])
 
@@ -438,8 +476,7 @@ final class SettingsPane: NSView, DockPage {
                 row(label("Show on Home"), PrefPopup(key: "dock.taskLimit", fallback: 5,
                                                   values: [3, 5, 8, 10], suffix: "items")),
                 PrefCheckbox("New to-dos have a date by default", key: "task.defaultDate", fallback: true),
-                row(completedLabel, button("Clear Done", #selector(clearCompleted))),
-                hint("The month view reads your Mac Calendar (macOS asks once). Pick a day to see its events and to-dos.")
+                row(completedLabel, button("Clear Done", #selector(clearCompleted)))
             ])
         ])
 
@@ -448,27 +485,22 @@ final class SettingsPane: NSView, DockPage {
         dockVisible.action = #selector(toggleDockVisible)
         addTab("Dock", [
             section("Dock", "circle.circle", Tint.blue, [
-                dockVisible,
-                hint("Touch the dock and the card opens beside it; the dock stays visible and can be dragged anywhere.")
+                dockVisible
             ]),
             section("While playing", "music.note", Tint.pink, [
                 row(label("Dock shows"), PrefChoice(key: "dock.mediaStyle", fallback: 0,
                                                  options: [(0, "Spinning cover + bars"), (1, "Lyrics"), (2, "Static icon")])),
                 row(label("Player length"), PrefSlider(key: "dock.pillWidth", fallback: 300, range: 84...680)),
-                hint("Far left = cover and bars only. Lyrics come from NetEase / LRCLIB (title shown if none); long text scrolls."),
                 PrefCheckbox("Now Playing on Home", key: "dock.showMedia", fallback: true),
                 PrefCheckbox("Holiday countdown on Home", key: "dock.showHoliday", fallback: true)
             ]),
             section("Card", "rectangle.on.rectangle", Tint.teal, [
                 row(label("Card width"), PrefSlider(key: "dock.cardWidth", fallback: FloatingDockPanel.defaultCardWidth,
                                                     range: 480...1100, width: 220, continuous: false)),
-                hint(L("Every page has this width (beside the dock, Home and Activity keep their narrow column). Default %ld = Home above or below the dock.",
-                       Int(FloatingDockPanel.defaultCardWidth))),
                 row(label("Entry icons"),
                     PrefCheckbox("Terminal", key: "nav.show.terminal", fallback: true),
                     PrefCheckbox("Shelf", key: "nav.show.shelf", fallback: true),
-                    PrefCheckbox("Clipboard", key: "nav.show.clipboard", fallback: true)),
-                hint("Home and Settings are always shown. Hidden pages still open with their shortcuts.")
+                    PrefCheckbox("Clipboard", key: "nav.show.clipboard", fallback: true))
             ])
         ])
 
@@ -494,7 +526,7 @@ final class SettingsPane: NSView, DockPage {
         ])
 
         // Terminal
-        var terminalRows: [NSView] = [hint("Same shortcuts as macOS Terminal. Common ones can be changed here; the rest (copy, paste, font size, paging, ⌘1–9…) are in the config file.")]
+        var terminalRows: [NSView] = []
         for action in TerminalAction.common {
             let name = label(action.title)
             name.translatesAutoresizingMaskIntoConstraints = false
@@ -505,48 +537,52 @@ final class SettingsPane: NSView, DockPage {
         }
         terminalRows.append(row(button("Open Config File", #selector(openKeymapFile)),
                                 button("Reset", #selector(resetKeymap))))
-        terminalRows.append(hint("Connections, Vault and Proxies: the gear at the top right of the Terminal page."))
         let terminal = section("Terminal Shortcuts", "terminal", Tint.gray, terminalRows)
         (terminal as? SettingsSection)?.content.spacing = 7
         addTab("Terminal", [terminal])
 
-        // The category list is our own; the tab view only swaps the pages.
+        // The overview is our own; the tab view only swaps the topics.
         tabs.tabViewType = .noTabsNoBorder
         tabs.drawsBackground = false
         tabs.translatesAutoresizingMaskIntoConstraints = false
-        let list = SidebarList(items: tabs.tabViewItems.map { item in
+        let grid = SettingsOverview(topics: tabs.tabViewItems.map { item in
             let title = "\(item.identifier ?? "")"
             let (symbol, tint) = Self.badge(title)
-            return SidebarList.Item(title: title, symbol: symbol, tint: tint)
-        }, rowHeight: 32)
-        list.onPick = { [weak self] index in
-            self?.tabs.selectTabViewItem(at: index)
-            self?.flashScroller()
-        }
-        categories = list
-        let panel = NSView()
-        panel.wantsLayer = true
-        panel.layer?.backgroundColor = NSColor(white: 1, alpha: 0.04).cgColor
-        panel.layer?.cornerRadius = 12
-        panel.translatesAutoresizingMaskIntoConstraints = false
-        // The categories first: Tab goes through the subviews in this order.
-        addSubview(list)
-        addSubview(panel)
-        panel.addSubview(tabs)
+            let groups = Self.sectionTitles(in: item.view).map { L($0) }
+            return SettingsOverview.Topic(title: title, symbol: symbol, tint: tint,
+                                          detail: groups.joined(separator: " · "))
+        })
+        grid.onPick = { [weak self] index in self?.select(tab: index, animated: true) }
+        overview = grid
+        detail.wantsLayer = true
+        detail.layer?.backgroundColor = NSColor(white: 1, alpha: 0.04).cgColor
+        detail.layer?.cornerRadius = 12
+        detail.translatesAutoresizingMaskIntoConstraints = false
+        detail.isHidden = true
+        addSubview(grid)
+        addSubview(detail)
+        detail.addSubview(tabs)
         NSLayoutConstraint.activate([
-            list.topAnchor.constraint(equalTo: topAnchor),
-            list.leadingAnchor.constraint(equalTo: leadingAnchor),
-            list.widthAnchor.constraint(equalToConstant: Self.categoryWidth),
-            list.bottomAnchor.constraint(lessThanOrEqualTo: bottomAnchor),
-            panel.topAnchor.constraint(equalTo: topAnchor),
-            panel.leadingAnchor.constraint(equalTo: list.trailingAnchor, constant: 14),
-            panel.trailingAnchor.constraint(equalTo: trailingAnchor),
-            panel.bottomAnchor.constraint(equalTo: bottomAnchor),
-            tabs.topAnchor.constraint(equalTo: panel.topAnchor),
-            tabs.leadingAnchor.constraint(equalTo: panel.leadingAnchor),
-            tabs.trailingAnchor.constraint(equalTo: panel.trailingAnchor),
-            tabs.bottomAnchor.constraint(equalTo: panel.bottomAnchor)
+            grid.topAnchor.constraint(equalTo: topAnchor, constant: 4),
+            grid.leadingAnchor.constraint(equalTo: leadingAnchor),
+            grid.trailingAnchor.constraint(equalTo: trailingAnchor),
+            grid.bottomAnchor.constraint(lessThanOrEqualTo: bottomAnchor),
+            detail.topAnchor.constraint(equalTo: topAnchor),
+            detail.leadingAnchor.constraint(equalTo: leadingAnchor),
+            detail.trailingAnchor.constraint(equalTo: trailingAnchor),
+            detail.bottomAnchor.constraint(equalTo: bottomAnchor),
+            tabs.topAnchor.constraint(equalTo: detail.topAnchor),
+            tabs.leadingAnchor.constraint(equalTo: detail.leadingAnchor),
+            tabs.trailingAnchor.constraint(equalTo: detail.trailingAnchor),
+            tabs.bottomAnchor.constraint(equalTo: detail.bottomAnchor)
         ])
+    }
+
+    /// The group titles inside a topic, top to bottom.
+    private static func sectionTitles(in view: NSView?) -> [String] {
+        guard let view else { return [] }
+        if let section = view as? SettingsSection { return [section.title] }
+        return view.subviews.flatMap { sectionTitles(in: $0) }
     }
 
     // MARK: State

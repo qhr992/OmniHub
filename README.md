@@ -16,7 +16,7 @@ A menu bar suite for macOS. Screenshots, pinned images, clipboard history, Now P
 
 **Menu bar.** A left click on the menu bar icon drops down a panel: what is playing on top, then CPU, memory, GPU, disk, battery, network speed and Keep Awake. A right click shows the menu, which starts with **Open Dashboard**.
 
-**Main window (Dashboard).** Open Dashboard (from the panel, the menu or the Dock icon) opens an ordinary window with every page down the left: Home, Activity, Agenda, Terminal, Shelf, Clipboard and Settings. A page is shown in one place at a time: opening it in the window takes it from the card, and it comes back when the card folds. Settings lists its categories down the left, with the chosen one on the right.
+**Main window (Dashboard).** Open Dashboard (from the panel, the menu or the Dock icon) opens an ordinary window with every page down the left: Home, Activity, Agenda, Terminal, Shelf, Clipboard and Settings. A page is shown in one place at a time: opening it in the window takes it from the card, and it comes back when the card folds. Settings opens on a grid of its topics; a topic opens its settings, and Back (top left) returns to the grid, then to the page before.
 
 **Screenshots.**
 - Capture with window detection, a magnifier and annotations with undo and redo: frames (rectangle or ellipse), arrows, pen, text, and a mosaic brush in three sizes to hide sensitive content. The chosen tool's options (shape, colour, brush size) open in a strip under the toolbar.

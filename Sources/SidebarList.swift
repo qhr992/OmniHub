@@ -1,7 +1,7 @@
 import AppKit
 
 /// A vertical list of choices, each with a coloured icon badge: the main
-/// window's pages and the Settings categories. Tab reaches the rows; ↑ / ↓
+/// window's pages. Tab reaches the rows; ↑ / ↓
 /// move the selection, Return or Space picks the focused row.
 final class SidebarList: NSStackView {
     struct Item {

@@ -21,6 +21,7 @@ SOURCES=(
   Sources/HotKey.swift
   Sources/HotKeyCenter.swift
   Sources/SettingsPane.swift
+  Sources/SettingsOverview.swift
   Sources/SidebarList.swift
   Sources/MainWindow.swift
   Sources/MenuBarPanel.swift

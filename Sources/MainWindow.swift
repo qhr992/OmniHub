@@ -99,6 +99,7 @@ final class MainWindow: NSWindow, NSWindowDelegate {
         center.addObserver(self, selector: #selector(pageReleased), name: .dockPageReleased, object: nil)
         center.addObserver(self, selector: #selector(relayout), name: .mediaChanged, object: nil)
         center.addObserver(self, selector: #selector(relayout), name: .tasksChanged, object: nil)
+        FloatingDockPanel.settings.onChange = { [weak self] in self?.settingsTopicChanged() }
     }
 
     private func buildContent() {
@@ -216,10 +217,25 @@ final class MainWindow: NSWindow, NSWindowDelegate {
         MainWindowMotion.crossfade(titleLabel.layer)
     }
 
-    /// Back from Settings to the page shown before it (⌘[ too).
+    /// Back (⌘[ too): from a topic to the Settings overview, from the
+    /// overview to the page shown before Settings.
     @objc private func goBack() {
         guard page == .settings else { return }
+        let pane = FloatingDockPanel.settings
+        if !pane.isOverview {
+            pane.showOverview(animated: isVisible && !FloatingDockPanel.headless)
+            return
+        }
         show(beforeSettings, activate: false)
+    }
+
+    /// Settings went between its overview and a topic: the title follows.
+    private func settingsTopicChanged() {
+        guard page == .settings else { return }
+        let title = FloatingDockPanel.settings.topicTitle ?? Page.settings.title
+        guard titleLabel.stringValue != title else { return }
+        titleLabel.stringValue = title
+        if isVisible, !FloatingDockPanel.headless { MainWindowMotion.crossfade(titleLabel.layer) }
     }
 
     // MARK: Pages
@@ -230,6 +246,8 @@ final class MainWindow: NSWindow, NSWindowDelegate {
         // Motion only for a change the person sees.
         let animated = isVisible && !FloatingDockPanel.headless && old != target
         page = target
+        // Settings always opens on its overview, scrolled to the top.
+        if target == .settings { FloatingDockPanel.settings.showOverview() }
         Prefs.set(Self.pageKey, target.rawValue)
         sidebar.select(Self.pages.firstIndex(of: target) ?? 0)
         titleLabel.stringValue = target.title
@@ -365,7 +383,8 @@ final class MainWindow: NSWindow, NSWindowDelegate {
         let view = shared.shown
         return "main visible=\(shared.isVisible) page=\(shared.page.rawValue) frame=\(shared.frame) "
             + "shown=\(view.map { "\(type(of: $0))" } ?? "-") inWindow=\(view?.isDescendant(of: shared.host) ?? false) "
-            + "pageSize=\(view.map { "\($0.frame.size)" } ?? "-") host=\(shared.host.bounds.size)"
+            + "pageSize=\(view.map { "\($0.frame.size)" } ?? "-") host=\(shared.host.bounds.size) "
+            + "title=\(shared.debugTitle) settings=\(FloatingDockPanel.settings.topicTitle ?? "overview")"
     }
 
     /// The window laid out at its size, without putting it on screen.
@@ -382,6 +401,7 @@ final class MainWindow: NSWindow, NSWindowDelegate {
     var debugSidebar: SidebarList { sidebar }
     var debugListShown: Bool { !side.isHidden }
     var debugBackShown: Bool { !backButton.isHidden }
+    var debugTitle: String { titleLabel.isHidden ? "" : titleLabel.stringValue }
     func debugBack() { backButton.performClick(nil) }
     var debugHost: NSView { host }
     var debugShown: NSView? { shown }
