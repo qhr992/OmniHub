@@ -25,6 +25,7 @@ enum MainSelfTest {
 
         card()
         pages(pictures: pictures)
+        narrowHome(pictures: pictures)
         sharing()
         settings(pictures: pictures)
         transferButton()
@@ -104,6 +105,42 @@ enum MainSelfTest {
         check("settings at the smallest window: fills \(Int(host.width))×\(Int(host.height))",
               abs((small.debugShown?.frame.width ?? 0) - host.width) <= 1)
         _ = MainWindow.debugOpen(.settings)
+    }
+
+    /// Home at the smallest window and at sizes between: the Now Playing
+    /// card keeps its cover, words, progress and buttons inside its edge.
+    private static func narrowHome(pictures: URL?) {
+        let saved = MediaObserver.shared.current
+        var song = MediaObserver.NowPlaying()
+        song.title = "A Very Long Song Title That Will Not Fit In A Narrow Card"
+        song.artist = "Somebody With A Long Name"; song.appName = "Music"
+        song.isPlaying = false; song.duration = 3725; song.elapsed = 3601
+        MediaObserver.shared.debugInject(song)
+        for width in [860, 960, 1080, 1400] as [CGFloat] {
+            let window = MainWindow.debugOpen(.home, size: NSSize(width: width, height: 540))
+            settle()
+            window.contentView?.layoutSubtreeIfNeeded()
+            let spill = window.debugHome.debugPlayingSpill
+            let compact = window.debugHome.debugPlayingCompact
+            check("home at width \(Int(width)): the Now Playing card holds all of its parts"
+                  + (compact ? " (buttons under the cover)" : ""),
+                  spill.isEmpty && compact == (width < 960), spill.joined(separator: "; "))
+            if let pictures, width == 860 {
+                snapshot(window, to: pictures.appendingPathComponent("main-home-narrow.png"))
+            }
+        }
+        // The menu bar panel's card (360 points): a song of a few minutes
+        // keeps the buttons beside the cover, an hour-long one moves them.
+        let panel = MenuBarPanelView()
+        panel.willShow(); panel.didHide()
+        check("menu bar panel, 62-minute track: buttons under the cover", panel.debugPlayingCompact)
+        song.duration = 245; song.elapsed = 125
+        MediaObserver.shared.debugInject(song)
+        let short = MenuBarPanelView()
+        short.willShow(); short.didHide()
+        check("menu bar panel, 4-minute track: buttons beside the cover", !short.debugPlayingCompact)
+        MediaObserver.shared.debugInject(saved)
+        _ = MainWindow.debugOpen(.home)
     }
 
     /// One view per page: the card borrows it, the window takes it back.

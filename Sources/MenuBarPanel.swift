@@ -151,6 +151,7 @@ final class MenuBarPanelView: NSView {
 
     /// Test hook: a click on the player's cover, through to the app switch.
     func debugOpenPlayer() { playing.debugOpen() }
+    var debugPlayingCompact: Bool { layoutSubtreeIfNeeded(); return playing.isCompact }
 }
 
 /// The system as on the Activity page: Display Sleep, then CPU, memory, GPU,

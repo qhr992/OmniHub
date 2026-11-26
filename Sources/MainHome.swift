@@ -160,6 +160,15 @@ final class MainHomeView: NSView, DockPage {
     @objc private func tasksChanged() { todos.update() }
     @objc private func statsChanged() { system.update() }
 
+    /// Test hook: Now Playing parts that reach past its card or under
+    /// the card beside it.
+    var debugPlayingSpill: [String] {
+        layoutSubtreeIfNeeded()
+        return playing.debugSpill(beside: system.convert(system.bounds, to: playing))
+    }
+
+    var debugPlayingCompact: Bool { playing.isCompact }
+
     /// Test hook: what the cards show.
     var debugText: String {
         "greeting=\(greeting.stringValue) date=\(dateLine.stringValue) clock=\(clock.stringValue) "
@@ -183,7 +192,17 @@ final class NowPlayingTile: HomeTile {
     private let elapsed = NSTextField(labelWithString: "")
     private let playButton = HomeLink("", symbol: "play.fill", color: .white) { MediaObserver.shared.togglePlayPause() }
     private let playColour = NSColor.white
+    private let transport = NSStackView()
+    private let text = NSStackView()
+    /// The progress line and buttons under the cover, when the card is too
+    /// narrow to keep them beside it.
+    private let lower = NSStackView()
     private let details = NSStackView()
+    private var coverSide: [NSLayoutConstraint] = []
+    private var progressWidth: NSLayoutConstraint?
+    private(set) var isCompact = false
+    private static let cover: CGFloat = 116
+    private static let compactCover: CGFloat = 76
     private let empty = HomeEmptyState(symbol: "music.note", title: "Nothing playing",
                                        detail: "Play music in any player to see its cover and lyrics here.")
     private var coverKey: ObjectIdentifier?
@@ -191,8 +210,9 @@ final class NowPlayingTile: HomeTile {
     init() {
         super.init(title: "Now Playing", symbol: "music.note", tint: SettingsSection.Tint.pink)
         artwork.translatesAutoresizingMaskIntoConstraints = false
-        artwork.widthAnchor.constraint(equalToConstant: 116).isActive = true
-        artwork.heightAnchor.constraint(equalToConstant: 116).isActive = true
+        coverSide = [artwork.widthAnchor.constraint(equalToConstant: Self.cover),
+                     artwork.heightAnchor.constraint(equalToConstant: Self.cover)]
+        NSLayoutConstraint.activate(coverSide)
         title.font = .systemFont(ofSize: 18, weight: .semibold)
         title.textColor = .white
         artist.font = .systemFont(ofSize: 13)
@@ -210,8 +230,8 @@ final class NowPlayingTile: HomeTile {
         previous.setAccessibilityTitle(L("Previous"))
         next.setAccessibilityTitle(L("Next"))
         playButton.setAccessibilityTitle(L("Play / Pause"))
-        let transport = NSStackView(views: [previous, playButton, next, elapsed])
-        transport.spacing = 18
+        for view in [previous, playButton, next, elapsed] { transport.addArrangedSubview(view) }
+        transport.spacing = 16
         for field in [title, artist, lyric] { words.addArrangedSubview(field) }
         words.orientation = .vertical
         words.alignment = .leading
@@ -220,13 +240,13 @@ final class NowPlayingTile: HomeTile {
         words.onClick = { [weak self] in self?.onOpen() }
         artwork.toolTip = L("Open the app that is playing")
         artwork.onClick = { [weak self] in self?.onOpen() }
-        let text = NSStackView(views: [words, progress, transport])
-        text.orientation = .vertical
-        text.alignment = .leading
-        text.spacing = 6
-        text.setCustomSpacing(12, after: words)
+        for stack in [text, lower] {
+            stack.orientation = .vertical
+            stack.alignment = .leading
+            stack.spacing = 6
+        }
+        text.addArrangedSubview(words)
         progress.translatesAutoresizingMaskIntoConstraints = false
-        progress.widthAnchor.constraint(equalTo: text.widthAnchor).isActive = true
         details.orientation = .horizontal
         details.distribution = .fill
         details.alignment = .centerY
@@ -237,15 +257,55 @@ final class NowPlayingTile: HomeTile {
         text.setContentHuggingPriority(.init(1), for: .horizontal)
         artwork.setContentHuggingPriority(.required, for: .horizontal)
         content.addArrangedSubview(details)
+        content.addArrangedSubview(lower)
         content.addArrangedSubview(empty)
-        details.widthAnchor.constraint(equalTo: content.widthAnchor).isActive = true
-        empty.widthAnchor.constraint(equalTo: content.widthAnchor).isActive = true
+        for view in [details, lower, empty] {
+            view.widthAnchor.constraint(equalTo: content.widthAnchor).isActive = true
+        }
+        place(compact: false)
+    }
+
+    /// Beside the cover the words need room for the buttons and the
+    /// longest time; a narrower card moves those under a smaller cover.
+    override func layout() {
+        let inner = bounds.width - 32
+        let compact = inner > 0 && inner < Self.cover + details.spacing + besideWidth
+        if compact != isCompact {
+            place(compact: compact)
+            layoutSubtreeIfNeeded()
+        }
+        super.layout()
+    }
+
+    /// The buttons and the time as they read now (at least "0:00 / 0:00",
+    /// so the layout does not change when a track starts).
+    private var besideWidth: CGFloat {
+        let buttons = transport.arrangedSubviews.filter { $0 !== elapsed }
+        let shortest = ("0:00 / 0:00" as NSString).size(withAttributes: [.font: elapsed.font as Any]).width + 4
+        return buttons.reduce(0) { $0 + $1.fittingSize.width } + transport.spacing * CGFloat(buttons.count)
+            + max(ceil(shortest), elapsed.fittingSize.width)
+    }
+
+    private func place(compact: Bool) {
+        isCompact = compact
+        progressWidth?.isActive = false
+        let host = compact ? lower : text
+        for view in [progress, transport] as [NSView] {
+            view.removeFromSuperview()
+            host.addArrangedSubview(view)
+        }
+        text.setCustomSpacing(12, after: words)
+        progressWidth = progress.widthAnchor.constraint(equalTo: host.widthAnchor)
+        progressWidth?.isActive = true
+        coverSide.forEach { $0.constant = compact ? Self.compactCover : Self.cover }
+        lower.isHidden = !compact || details.isHidden
     }
 
     func update() {
         let item = MediaObserver.shared.current
         let shown = item?.hasContent == true
         details.isHidden = !shown
+        lower.isHidden = !shown || !isCompact
         empty.isHidden = shown
         guard let item, shown else {
             setWash(nil)
@@ -278,6 +338,22 @@ final class NowPlayingTile: HomeTile {
     }
 
     var debugText: String { details.isHidden ? "none" : "\(title.stringValue) – \(artist.stringValue)" }
+
+    /// Test hook: the parts drawn past the card's inner edge, under
+    /// `beside` (the card next to it), or squeezed below their own width.
+    func debugSpill(beside: NSRect) -> [String] {
+        let inner = bounds.insetBy(dx: 8, dy: 8)
+        let buttons = transport.arrangedSubviews.enumerated().map { ("button \($0.offset)", $0.element) }
+        let parts: [(String, NSView)] = [("cover", artwork), ("title", title), ("progress", progress)] + buttons
+        return parts.compactMap { name, view in
+            guard !view.isHidden, view.window != nil else { return nil }
+            let frame = view.convert(view.bounds, to: self)
+            let squeezed = view !== title && view !== progress && frame.width < view.fittingSize.width - 1
+            let ok = inner.contains(frame) && !frame.intersects(beside) && frame.width >= 1 && !squeezed
+            return ok ? nil : "\(name) \(NSStringFromRect(frame.integral)) wants \(Int(view.fittingSize.width))"
+                + " in \(NSStringFromRect(bounds.integral))"
+        }
+    }
 
     /// Test hook: what a click on the cover runs, as it is set.
     func debugOpen() { artwork.onClick?() }
