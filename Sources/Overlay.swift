@@ -228,6 +228,10 @@ final class OverlayView: NSView {
 
     override var isFlipped: Bool { true }
     override var acceptsFirstResponder: Bool { true }
+    /// Only the overlay on the pointer's display is key when a screenshot
+    /// starts; a press on another display's overlay must still select,
+    /// not just make that window key (it took a second click).
+    override func acceptsFirstMouse(for event: NSEvent?) -> Bool { true }
 
     private var textField: NSTextField?
     private var textOrigin: CGPoint = .zero
