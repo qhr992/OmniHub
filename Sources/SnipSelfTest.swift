@@ -94,9 +94,11 @@ enum SnipSelfTest {
 
         let controller = OverlayController(captures: [capture])
         let session = SnipSession(captures: [capture])
-        let saved = [SnipSession.frameShapeKey, SnipSession.mosaicSizeKey].map { ($0, UserDefaults.standard.object(forKey: $0)) }
+        let saved = [SnipSession.frameShapeKey, SnipSession.mosaicSizeKey, SnipSession.frameFilledKey]
+            .map { ($0, UserDefaults.standard.object(forKey: $0)) }
         defer { for (key, value) in saved { UserDefaults.standard.set(value, forKey: key) } }
         session.frameShape = .rectangle
+        session.frameFilled = false
         session.mosaicSize = Mosaic.defaultBrushSize
         let toolbar = ToolbarPanel(session: session, controller: controller)
         let renderDir = ProcessInfo.processInfo.environment["OMNIHUB_RENDER_DIR"]
@@ -147,6 +149,22 @@ enum SnipSelfTest {
         check("Frame again turns it off; chosen once more it keeps the last shape (also for the next screenshot)",
               off && session.tool == .ellipse && SnipSession(captures: []).frameShape == .ellipse,
               "\(String(describing: session.tool))")
+
+        // Fill: frames painted solid over what is inside.
+        let fillBefore = toolbar.debugFill
+        toolbar.debugToggleFill()
+        check("Fill beside the shapes: on paints frames solid, the icons turn solid, kept for the next screenshot "
+              + "(\(fillBefore) → \(toolbar.debugFill), \(toolbar.debugFrameSymbol))",
+              fillBefore == "off" && toolbar.debugFill == "on" && session.frameFilled
+                && toolbar.debugFrameSymbol == "circle.fill" && SnipSession(captures: []).frameFilled)
+        render("toolbar-fill")
+        toolbar.debugChoose(tool: .arrow)
+        check("Fill is offered for frames only", toolbar.debugFill == "hidden", toolbar.debugFill)
+        toolbar.debugChoose(tool: .rectangle)
+        toolbar.debugToggleFill()
+        check("Fill off again: outlined frames", toolbar.debugFill == "off" && !session.frameFilled
+                && toolbar.debugFrameSymbol == "circle")
+        check("a filled frame covers what is inside; an outlined one leaves it", filledFrameCovers())
 
         toolbar.debugChoose(tool: .mosaic)
         check("Mosaic offers brush sizes, no colours",
@@ -445,5 +463,27 @@ enum SnipSelfTest {
 
         print(failures == 0 ? "snip selftest: all passed" : "snip selftest: \(failures) failed")
         exit(failures == 0 ? 0 : 1)
+    }
+
+    /// Draws a striped picture, then a red frame over it, filled and not:
+    /// filled, the inside is red throughout; outlined, the stripes remain.
+    private static func filledFrameCovers() -> Bool {
+        func inside(filled: Bool) -> [UInt32] {
+            let side = 60
+            guard let ctx = CGContext(data: nil, width: side, height: side, bitsPerComponent: 8, bytesPerRow: side * 4,
+                                      space: CGColorSpaceCreateDeviceRGB(),
+                                      bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue) else { return [] }
+            for x in stride(from: 0, to: side, by: 4) {
+                ctx.setFillColor(x % 8 == 0 ? NSColor.black.cgColor : NSColor.white.cgColor)
+                ctx.fill(CGRect(x: x, y: 0, width: 4, height: side))
+            }
+            Annotation(shape: .rectangle(CGRect(x: 10, y: 10, width: 40, height: 40)), color: .systemRed,
+                       lineWidth: 3, filled: filled).draw(in: ctx, textColor: .white)
+            guard let data = ctx.data else { return [] }
+            let pixels = data.bindMemory(to: UInt32.self, capacity: side * side)
+            return (16..<44).flatMap { y in (16..<44).map { x in pixels[y * side + x] } }
+        }
+        let filled = inside(filled: true), outlined = inside(filled: false)
+        return Set(filled).count == 1 && Set(outlined).count > 1
     }
 }

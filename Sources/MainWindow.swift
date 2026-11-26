@@ -421,6 +421,14 @@ final class MainWindow: NSWindow, NSWindowDelegate {
 
     // MARK: Test hooks
 
+    /// The window's frame in the CG global space (origin top-left), while it
+    /// is on screen: the screenshot demo frames it.
+    static var shownFrameCG: CGRect? {
+        guard let shared, shared.isVisible, let primary = NSScreen.screens.first else { return nil }
+        let frame = shared.frame
+        return CGRect(x: frame.minX, y: primary.frame.maxY - frame.maxY, width: frame.width, height: frame.height)
+    }
+
     static var debugState: String {
         guard let shared else { return "main = (nil)" }
         let view = shared.shown

@@ -41,7 +41,7 @@ enum HelpContent {
         ]),
         section("Screenshot and Pins", "camera.viewfinder", Tint.teal, [
             ("Taking a screenshot", "⌘1 (or the menu). Windows are detected as you hover, and a click takes the whole window. A magnifier helps with exact edges. Move or resize the selection before you confirm."),
-            ("Marking up", "Box (square or round), arrow, pen, text and a blur pen in three sizes; undo and redo. Pick a tool and its options (shape, colour, size) open under the toolbar."),
+            ("Marking up", "Box (square or round), arrow, pen, text and a blur pen in three sizes; undo and redo. Pick a tool and its options (shape, colour, size) open under the toolbar. Turn on Fill beside the box shapes and a box is painted solid, covering what is inside."),
             ("Copy, save, pin", "Copy the result, save it (to the folder you saved in last), or pin it on screen."),
             ("Scrolling screenshot", "Start it from the screenshot toolbar or the menu bar menu, then scroll down yourself: the pieces are stitched into one long image. Hold ↓ to scroll at an even pace, tap ↑ / ↓ for a short step. It stops a few seconds after you stop scrolling, or on Esc / Done."),
             ("Pins", "Pins float above every window. Zoom with the scroll wheel, a pinch or the − ＋ buttons shown on hover; × closes. Text in a pin can be selected and copied (Live Text). ⇧⌘2 pins the image on the clipboard.")
@@ -120,7 +120,7 @@ enum HelpContent {
         ]),
         section("截图与贴图", "camera.viewfinder", Tint.teal, [
             ("截图", "按 ⌘1（或从菜单）。光标移动时自动识别窗口，单击即截取整个窗口；放大镜帮助对准边缘。确认前可以移动选区或调整大小。"),
-            ("标注", "加框（方框或圆框）、箭头、画笔、文字和三档大小的打码画笔，可撤销、重做。选中工具后，它的选项（形状、颜色、大小）在工具栏下方展开。"),
+            ("标注", "加框（方框或圆框）、箭头、画笔、文字和三档大小的打码画笔，可撤销、重做。选中工具后，它的选项（形状、颜色、大小）在工具栏下方展开。打开加框形状旁的「填充」，框会被颜色填满，直接遮住框里的内容。"),
             ("复制、保存、钉住", "结果可以复制、保存（默认打开上次保存的文件夹）或钉在屏幕上。"),
             ("长截图", "从截图工具栏或菜单栏菜单开始，然后自己往下滚动页面，自动拼接成一张长图。按住 ↓ 匀速慢滚，点按 ↑ / ↓ 一次滚一小段。停止滚动几秒后自动结束，也可以按 Esc 或点完成。"),
             ("贴图", "贴图浮在所有窗口之上。滚轮、双指或悬停时出现的 − ＋ 按钮缩放，× 关闭；贴图里的文字可以直接选中复制（实况文本）。⇧⌘2 把剪贴板里的图片钉出来。")
@@ -161,7 +161,7 @@ enum HelpContent {
             ("IP 地址", "本机的 IP 地址；公网 IP 需要你开启后才会查询（访问 api.ipify.org）。")
         ]),
         section("菜单栏与状态图标", "menubar.rectangle", Tint.indigo, [
-            ("小伙伴", "菜单栏可以显示小伙伴或状态图标。小伙伴速度：随内存、随 CPU 或不动。"),
+            ("小伙伴", "菜单栏可以显示小伙伴或状态图标。小伙伴速度：随内存、随 CPU 或静止。"),
             ("网速", "可在图标右侧显示网速：上方上传、下方下载。在「设置 → 外观」或右键菜单里打开。"),
             ("状态图标", "一个实时的圆形图标：开口的外圈、顶部的头部、中间的符号和底部的圆点（或圆弧），分别显示你选的内容：电池、CPU、内存、磁盘、Wi-Fi、网络或音量。也可以显示在悬浮球和程序坞上。"),
             ("外圈显示电池", "用电池时顶部显示电量数字，充电时显示绿色闪电，接着电源但没在充电时显示插头。用电池时电量在 80% 及以上保持默认颜色，往下逐渐变黄、变橙，20% 及以下为红色；只有充电时才是绿色。关掉「外环显示数字」只显示圆环。"),
