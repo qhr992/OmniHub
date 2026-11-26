@@ -27,6 +27,12 @@ final class SnipSession {
         set { if newValue.isFrame { UserDefaults.standard.set(newValue.rawValue, forKey: Self.frameShapeKey) } }
     }
     static let frameShapeKey = "snip.frameShape"
+    /// Frames painted solid, covering what is inside; the last choice is kept.
+    var frameFilled: Bool {
+        get { Prefs.bool(Self.frameFilledKey, false) }
+        set { UserDefaults.standard.set(newValue, forKey: Self.frameFilledKey) }
+    }
+    static let frameFilledKey = "snip.frameFilled"
     /// Width of the mosaic brush; the last one chosen is kept.
     var mosaicSize: CGFloat {
         get {
@@ -222,6 +228,10 @@ final class OverlayView: NSView {
 
     override var isFlipped: Bool { true }
     override var acceptsFirstResponder: Bool { true }
+    /// Only the overlay on the pointer's display is key when a screenshot
+    /// starts; a press on another display's overlay must still select,
+    /// not just make that window key (it took a second click).
+    override func acceptsFirstMouse(for event: NSEvent?) -> Bool { true }
 
     private var textField: NSTextField?
     private var textOrigin: CGPoint = .zero
@@ -614,10 +624,10 @@ final class OverlayView: NSView {
         switch tool {
         case .rectangle:
             session.draft = Annotation(shape: .rectangle(CGRect(origin: point, size: .zero)),
-                                       color: session.color, lineWidth: session.lineWidth)
+                                       color: session.color, lineWidth: session.lineWidth, filled: session.frameFilled)
         case .ellipse:
             session.draft = Annotation(shape: .ellipse(CGRect(origin: point, size: .zero)),
-                                       color: session.color, lineWidth: session.lineWidth)
+                                       color: session.color, lineWidth: session.lineWidth, filled: session.frameFilled)
         case .arrow:
             session.draft = Annotation(shape: .arrow(from: point, to: point),
                                        color: session.color, lineWidth: session.lineWidth)
@@ -898,27 +908,39 @@ final class OverlayController {
     }
 
     /// Scripted demo state (used by `--demo`) so the overlay can be captured
-    /// for documentation without a human dragging a rectangle.
+    /// for documentation without a human dragging a rectangle. With the main
+    /// window open the frame is that window (Home), so only OmniHub shows.
     func runDemo() {
         guard let first = session.captures.first else { return }
-        let b = first.bounds
-        let sel = CGRect(x: b.minX + 200, y: b.minY + 160, width: 760, height: 440)
+        // The display showing most of the main window, else the first one.
+        let shown = MainWindow.shownFrameCG
+        let display = shown.flatMap { frame in
+            session.captures.max { a, b in
+                let x = a.bounds.intersection(frame), y = b.bounds.intersection(frame)
+                return x.width * x.height < y.width * y.height
+            }
+        } ?? first
+        let b = display.bounds
+        let window = shown.map { $0.intersection(b) }.flatMap { $0.isEmpty ? nil : $0 }
+        let sel = window ?? CGRect(x: b.minX + 200, y: b.minY + 160, width: 760, height: 440)
         session.selection = sel
         session.cursor = CGPoint(x: sel.midX, y: sel.midY)
         session.stage = .annotating
+        session.tool = .rectangle   // its options (shapes, Fill, colours) show under the toolbar
+        // Placed as parts of the frame, so they land on the same cards at any size.
+        func box(_ x: CGFloat, _ y: CGFloat, _ w: CGFloat, _ h: CGFloat) -> CGRect {
+            CGRect(x: sel.minX + x * sel.width, y: sel.minY + y * sel.height, width: w * sel.width, height: h * sel.height)
+        }
+        func point(_ x: CGFloat, _ y: CGFloat) -> CGPoint {
+            CGPoint(x: sel.minX + x * sel.width, y: sel.minY + y * sel.height)
+        }
         session.annotations = [
-            Annotation(shape: .rectangle(CGRect(x: sel.minX + 40, y: sel.minY + 56,
-                                                width: 300, height: 170)),
-                       color: .systemRed, lineWidth: 4),
-            Annotation(shape: .ellipse(CGRect(x: sel.minX + 420, y: sel.minY + 60,
-                                              width: 240, height: 150)),
-                       color: .systemBlue, lineWidth: 4),
-            Annotation(shape: .arrow(from: CGPoint(x: sel.minX + 360, y: sel.minY + 380),
-                                     to: CGPoint(x: sel.minX + 620, y: sel.minY + 230)),
-                       color: .systemYellow, lineWidth: 4),
-            Annotation(shape: .text("OmniHub",
-                                    CGPoint(x: sel.minX + 40, y: sel.minY + 18)),
-                       color: .systemRed, lineWidth: 3)
+            Annotation(shape: .rectangle(box(0.275, 0.225, 0.34, 0.33)), color: .systemRed, lineWidth: 4),
+            Annotation(shape: .ellipse(box(0.62, 0.25, 0.36, 0.25)), color: .systemBlue, lineWidth: 4),
+            // Filled: what is inside is covered.
+            Annotation(shape: .rectangle(box(0.29, 0.635, 0.31, 0.12)), color: .systemYellow, lineWidth: 4, filled: true),
+            Annotation(shape: .arrow(from: point(0.5, 0.9), to: point(0.7, 0.72)), color: .systemYellow, lineWidth: 4),
+            Annotation(shape: .text("OmniHub", point(0.29, 0.03)), color: .systemRed, lineWidth: 3)
         ]
         selectionDidComplete()
     }

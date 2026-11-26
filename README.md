@@ -21,7 +21,7 @@ A menu bar suite for macOS. Screenshots, pinned images, clipboard history, Now P
 **Help.** The **?** at the bottom left of the main window (⌘?) explains every feature, with a search that narrows the help to the topics mentioning your words.
 
 **Screenshots.**
-- Capture with window detection, a magnifier and annotations with undo and redo: frames (rectangle or ellipse), arrows, pen, text, and a mosaic brush in three sizes to hide sensitive content. The chosen tool's options (shape, colour, brush size) open in a strip under the toolbar.
+- Capture with window detection, a magnifier and annotations with undo and redo: frames (rectangle or ellipse, outlined or filled to cover what is inside), arrows, pen, text, and a mosaic brush in three sizes to hide sensitive content. The chosen tool's options (shape, fill, colour, brush size) open in a strip under the toolbar.
 - Move or resize the selection before confirming.
 - Copy, save, or pin the result. Save opens in the folder you saved to last.
 - Scrolling capture stitches a long page while you scroll it yourself, or hold ↓ for a slow, steady scroll (↑ / ↓ step one notch).

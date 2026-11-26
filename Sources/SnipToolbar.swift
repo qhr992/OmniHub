@@ -132,7 +132,8 @@ final class ToolbarPanel: NSPanel {
         for (slot, button) in toolButtons {
             if slot.isFrame {
                 let shape = tool.flatMap { $0.isFrame ? $0 : nil } ?? session.frameShape
-                button.image = NSImage(systemSymbolName: shape.symbolName, accessibilityDescription: L("Frame"))
+                debugFrameSymbol = shape.symbolName(filled: session.frameFilled)
+                button.image = NSImage(systemSymbolName: debugFrameSymbol, accessibilityDescription: L("Frame"))
                 button.isChosen = tool?.isFrame == true
             } else {
                 button.isChosen = tool == slot
@@ -170,6 +171,11 @@ final class ToolbarPanel: NSPanel {
     func debugChoose(shape: AnnotationTool) { options.debugChoose(shape: shape) }
     func debugChoose(color index: Int) { options.debugChoose(color: index) }
     func debugChoose(size index: Int) { options.debugChoose(size: index) }
+    func debugToggleFill() { options.debugToggleFill() }
+    /// "on" / "off", or "hidden" when not offered.
+    var debugFill: String { options.debugFill }
+    /// The frame button's symbol (test hook).
+    private(set) var debugFrameSymbol = ""
     var debugToolNames: [String] { toolButtons.map { $0.button.toolTip ?? "" } }
     /// e.g. "tools=Frame shapes=Ellipse colors=2 sizes=hidden"; "hidden" when not offered.
     var debugChoices: String {
@@ -218,13 +224,14 @@ final class ToolbarPanel: NSPanel {
 
 // MARK: - Tool options
 
-/// The chosen tool's options in a strip of their own: frame shapes and
-/// colours for the frame, colours for arrow / pen / text, brush sizes for
-/// the mosaic. Nothing for no tool.
+/// The chosen tool's options in a strip of their own: frame shapes, Fill
+/// and colours for the frame, colours for arrow / pen / text, brush sizes
+/// for the mosaic. Nothing for no tool.
 final class ToolOptionsPanel: NSPanel {
     private let session: SnipSession
     private let onChange: () -> Void
     private var shapeButtons: [ToolButton] = []
+    private var fillButton: ToolButton!
     private var colorButtons: [NSButton] = []
     private var sizeButtons: [ToolButton] = []
     private var shapeViews: [NSView] = []
@@ -253,6 +260,10 @@ final class ToolOptionsPanel: NSPanel {
             shapeButtons.append(button)
             shapeViews.append(button)
         }
+        let fill = L("Fill: covers what is inside")
+        fillButton = HUD.toolButton(image: NSImage(systemSymbolName: "paintbrush.fill", accessibilityDescription: fill),
+                                    tooltip: fill, side: 24, target: self, action: #selector(toggleFill))
+        shapeViews.append(fillButton)
         shapeViews.append(HUD.separator(height: 16))
 
         for (index, color) in Self.colors.enumerated() {
@@ -306,7 +317,14 @@ final class ToolOptionsPanel: NSPanel {
         layOut(shown)
         hasContent = !shown.isEmpty
 
-        for button in shapeButtons { button.isChosen = button.tag == tool?.rawValue }
+        let filled = session.frameFilled
+        for button in shapeButtons {
+            button.isChosen = button.tag == tool?.rawValue
+            if let shape = AnnotationTool(rawValue: button.tag) {
+                button.image = NSImage(systemSymbolName: shape.symbolName(filled: filled), accessibilityDescription: shape.title)
+            }
+        }
+        fillButton.isChosen = filled
         for (index, button) in colorButtons.enumerated() {
             let chosen = Self.colors[index] == session.color
             button.layer?.borderWidth = chosen ? 2.5 : 1
@@ -359,6 +377,11 @@ final class ToolOptionsPanel: NSPanel {
         onChange()
     }
 
+    @objc private func toggleFill() {
+        session.frameFilled.toggle()
+        onChange()
+    }
+
     @objc private func selectColor(_ sender: NSButton) {
         guard sender.tag < Self.colors.count else { return }
         session.color = Self.colors[sender.tag]
@@ -376,6 +399,8 @@ final class ToolOptionsPanel: NSPanel {
         if let button = shapeButtons.first(where: { $0.tag == shape.rawValue }) { selectShape(button) }
     }
     func debugChoose(color index: Int) { if colorButtons.indices.contains(index) { selectColor(colorButtons[index]) } }
+    func debugToggleFill() { toggleFill() }
+    var debugFill: String { fillButton.superview == nil ? "hidden" : fillButton.isChosen ? "on" : "off" }
     func debugChoose(size index: Int) { if sizeButtons.indices.contains(index) { selectSize(sizeButtons[index]) } }
     var debugChoices: String {
         func list(_ buttons: [NSButton], _ chosen: (NSButton) -> Bool, _ name: (NSButton) -> String) -> String {

@@ -557,3 +557,4 @@
 "Could not turn display sleep off" = "无法关闭息屏";
 "Turned off, the display stays on while you are away" = "关闭后，离开时屏幕也保持常亮";
 "Transparency" = "透明度";
+"Fill: covers what is inside" = "填充：直接遮住框内内容";

@@ -2,7 +2,8 @@ import AppKit
 import CoreGraphics
 
 /// Annotation tools drawn over a capture. Rectangle and ellipse share one
-/// toolbar button (the frame), which offers both shapes once chosen.
+/// toolbar button (the frame), which offers both shapes once chosen, and
+/// whether they are filled (covering what is inside).
 enum AnnotationTool: Int, CaseIterable {
     case rectangle, ellipse, arrow, pen, text, mosaic
 
@@ -21,6 +22,12 @@ enum AnnotationTool: Int, CaseIterable {
         case .text:      return "textformat"
         case .mosaic:    return "checkerboard.rectangle"
         }
+    }
+
+    /// The frame shapes' solid look, while Fill is on.
+    func symbolName(filled: Bool) -> String {
+        guard filled, isFrame else { return symbolName }
+        return symbolName + ".fill"
     }
 
     var title: String {
@@ -52,6 +59,8 @@ struct Annotation {
     var shape: Shape
     var color: NSColor
     var lineWidth: CGFloat
+    /// Rectangle / ellipse: painted solid in `color`, covering what is inside.
+    var filled = false
 
     /// Smallest rect that contains the whole annotation, for clipping.
     var bounds: CGRect {
@@ -95,8 +104,10 @@ struct Annotation {
 
         switch shape {
         case .rectangle(let r):
+            if filled { ctx.fill(r) }
             ctx.stroke(r)
         case .ellipse(let r):
+            if filled { ctx.fillEllipse(in: r) }
             ctx.strokeEllipse(in: r)
         case .arrow(let from, let to):
             drawArrow(ctx, from: from, to: to)
