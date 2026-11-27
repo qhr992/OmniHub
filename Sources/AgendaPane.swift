@@ -59,12 +59,8 @@ final class AgendaPane: NSView, DockPage {
     private let accessButton = NSButton(title: L("Open System Settings"), target: nil, action: nil)
     private let dayLabel = NSTextField(labelWithString: "")
     private let titleField = NSTextField()
-    private let noteField = NSTextField()
-    private static let noteLines = 4
-    private static var noteFieldMaxHeight: CGFloat {
-        let font = NSFont.systemFont(ofSize: 12)
-        return ceil(font.ascender - font.descender + font.leading) * CGFloat(noteLines) + 8
-    }
+    /// Up to four lines, then it scrolls with a scroller.
+    private let noteEditor = NoteEditor(placeholder: L("Note (optional)"), maxLines: 4)
     private let dateToggle = FocusButton(checkboxWithTitle: L("Date"), target: nil, action: nil)
     private let datePicker = NSDatePicker()
     private let addButton = FocusButton(title: L("Add"), target: nil, action: nil)
@@ -118,11 +114,12 @@ final class AgendaPane: NSView, DockPage {
     /// Test hook: edit the note with the caret at its end; returns how far
     /// the field scrolled down to show it.
     func debugEditNoteAtEnd() -> CGFloat {
-        guard window?.makeFirstResponder(noteField) == true, let editor = noteField.currentEditor() as? NSTextView else { return -1 }
+        let editor = noteEditor.textView
+        guard window?.makeFirstResponder(editor) == true else { return -1 }
         let end = NSRange(location: (editor.string as NSString).length, length: 0)
         editor.setSelectedRange(end)
         editor.scrollRangeToVisible(end)
-        let offset = editor.enclosingScrollView?.contentView.bounds.minY ?? editor.visibleRect.minY
+        let offset = noteEditor.contentView.bounds.minY
         window?.makeFirstResponder(nil)
         return offset
     }
@@ -130,11 +127,19 @@ final class AgendaPane: NSView, DockPage {
     /// Test hook: the note field's height and how much of the list shows.
     var debugFormHeights: (note: CGFloat, list: CGFloat) {
         layoutSubtreeIfNeeded()
-        return (noteField.frame.height, listStack.enclosingScrollView?.frame.height ?? 0)
+        return (noteEditor.frame.height, listStack.enclosingScrollView?.frame.height ?? 0)
+    }
+    var debugNoteScrollerShown: Bool { noteEditor.debugScrollerShown }
+    /// Test hook: a key command in the note box, the caret at its end.
+    func debugNoteKey(_ command: Selector) {
+        let editor = noteEditor.textView
+        _ = window?.makeFirstResponder(editor)
+        editor.setSelectedRange(NSRange(location: (editor.string as NSString).length, length: 0))
+        editor.doCommand(by: command)
     }
     func debugShowDone(_ done: Bool) { modePicker.selectedSegment = done ? 1 : 0; reload() }
     var debugForm: String {
-        "title=\(titleField.stringValue) note=\(noteField.stringValue) button=\(addButton.title) "
+        "title=\(titleField.stringValue) note=\(noteEditor.string) button=\(addButton.title) "
             + "editing=\(editingID != nil) highlighted=\(highlightedRow != nil)"
     }
     /// The Tab order of the form, as titles / placeholders.
@@ -143,7 +148,8 @@ final class AgendaPane: NSView, DockPage {
         var view: NSView? = titleField
         for _ in 0..<8 {
             guard let current = view else { break }
-            names.append((current as? NSTextField)?.placeholderString ?? (current as? NSButton)?.title
+            names.append((current as? NSTextField)?.placeholderString ?? (current as? PlaceholderTextView)?.placeholder
+                         ?? (current as? NSButton)?.title
                          ?? (current is NSDatePicker ? "date picker" : "\(type(of: current))"))
             view = current.nextKeyView
             if view === titleField { break }
@@ -245,17 +251,8 @@ final class AgendaPane: NSView, DockPage {
         // Without this, tabbing to the note field fires the action and adds
         // a half-filled item.
         titleField.cell?.sendsActionOnEndEditing = false
-        noteField.placeholderString = L("Note (optional)")
-        noteField.font = .systemFont(ofSize: 12)
-        // A long note shows its first lines (the last ends in "…") and
-        // scrolls inside the field while editing, so the list keeps its room.
-        noteField.maximumNumberOfLines = Self.noteLines
-        noteField.cell?.truncatesLastVisibleLine = true
-        noteField.translatesAutoresizingMaskIntoConstraints = false
-        noteField.heightAnchor.constraint(lessThanOrEqualToConstant: Self.noteFieldMaxHeight).isActive = true
-        noteField.target = self
-        noteField.action = #selector(addTask)
-        noteField.cell?.sendsActionOnEndEditing = false
+        noteEditor.onReturn = { [weak self] in self?.addTask() }
+        noteEditor.toolTip = L("Return adds or saves · Option-Return starts a new line")
 
         dateToggle.target = self
         dateToggle.action = #selector(toggleDate)
@@ -286,8 +283,8 @@ final class AgendaPane: NSView, DockPage {
         editRow.isHidden = true
 
         // Tab walks the form: title → note → date → time → Add (→ Cancel).
-        titleField.nextKeyView = noteField
-        noteField.nextKeyView = dateToggle
+        titleField.nextKeyView = noteEditor.textView
+        noteEditor.textView.nextKeyView = dateToggle
         dateToggle.nextKeyView = datePicker
         datePicker.nextKeyView = addButton
         addButton.nextKeyView = cancelButton
@@ -320,12 +317,12 @@ final class AgendaPane: NSView, DockPage {
         summaryLabel.font = .systemFont(ofSize: 10.5)
         summaryLabel.textColor = NSColor(white: 1, alpha: 0.5)
 
-        let right = NSStackView(views: [header, titleField, noteField, dateRow, editRow, scroll, summaryLabel])
+        let right = NSStackView(views: [header, titleField, noteEditor, dateRow, editRow, scroll, summaryLabel])
         right.orientation = .vertical
         right.alignment = .leading
         right.spacing = 8
         right.translatesAutoresizingMaskIntoConstraints = false
-        for view in [header, titleField, noteField, dateRow, editRow, scroll] as [NSView] {
+        for view in [header, titleField, noteEditor, dateRow, editRow, scroll] as [NSView] {
             view.translatesAutoresizingMaskIntoConstraints = false
             view.widthAnchor.constraint(equalTo: right.widthAnchor).isActive = true
         }
@@ -427,7 +424,7 @@ final class AgendaPane: NSView, DockPage {
 
     @objc private func addTask() {
         let due = dateToggle.state == .on ? datePicker.dateValue : nil
-        let note = noteField.stringValue.trimmingCharacters(in: .whitespacesAndNewlines)
+        let note = noteEditor.string.trimmingCharacters(in: .whitespacesAndNewlines)
         let saved: Bool
         if let editingID {
             saved = TaskStore.shared.update(editingID, title: titleField.stringValue, note: note, due: due)
@@ -448,7 +445,7 @@ final class AgendaPane: NSView, DockPage {
     private func beginEditing(_ task: TaskItem) {
         editingID = task.id
         titleField.stringValue = task.title
-        noteField.stringValue = task.note
+        noteEditor.string = task.note
         dateToggle.state = task.due == nil ? .off : .on
         datePicker.isEnabled = task.due != nil
         if let due = task.due { datePicker.dateValue = due }
@@ -462,7 +459,7 @@ final class AgendaPane: NSView, DockPage {
     private func endEditing() {
         editingID = nil
         titleField.stringValue = ""
-        noteField.stringValue = ""
+        noteEditor.string = ""
         let withDate = Prefs.bool("task.defaultDate", true)
         dateToggle.state = withDate ? .on : .off
         datePicker.isEnabled = withDate

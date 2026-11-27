@@ -89,7 +89,9 @@ enum TabOrder {
     static func isStop(_ view: NSView) -> Bool {
         guard view.window != nil, !view.isHiddenOrHasHiddenAncestor,
               view.bounds.width > 0, view.bounds.height > 0 else { return false }
-        if view is NSTextView { return false }                         // the shell gets its own Tab
+        // A text view gets its own Tab (the shell), except the Agenda's
+        // note box, which is a stop like a text field.
+        if view is NSTextView { return view is PlaceholderTextView && (view as? NSTextView)?.isEditable == true }
         if view is NSScrollView || view is NSClipView || view is NSScroller { return false }
         if let control = view as? NSControl, !control.isEnabled { return false }
         // A field being edited (a combo box at least) says it takes no

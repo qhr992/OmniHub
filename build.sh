@@ -47,6 +47,7 @@ SOURCES=(
   Sources/Store.swift
   Sources/TaskStore.swift
   Sources/TaskPreview.swift
+  Sources/NoteEditor.swift
   Sources/ClipboardStore.swift
   Sources/MediaObserver.swift
   Sources/PlayerActivity.swift

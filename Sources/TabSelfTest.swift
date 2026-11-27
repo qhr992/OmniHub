@@ -62,6 +62,7 @@ enum TabSelfTest {
         guard let view else { return "nothing" }
         switch view {
         case let field as NSTextField: return "[\(field.placeholderString ?? field.stringValue)]"
+        case let note as PlaceholderTextView: return "[\(note.placeholder)]"
         case let popup as NSPopUpButton: return "popup(\(popup.titleOfSelectedItem ?? ""))"
         case is NSSlider: return "slider"
         case is NSSegmentedControl: return "segments"
@@ -209,7 +210,7 @@ enum TabSelfTest {
         press(window)
         let afterTitle = window.focusedControl
         check("Agenda: Tab moves from the title to the note",
-              (afterTitle as? NSTextField)?.placeholderString == "Note (optional)", "at \(name(afterTitle))")
+              name(afterTitle) == "[Note (optional)]", "at \(name(afterTitle))")
         var form: [String] = []
         for _ in 0..<4 {
             press(window)

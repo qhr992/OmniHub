@@ -2342,6 +2342,39 @@ final class FloatingDockPanel: NSPanel, EscDismissable, NSTextFieldDelegate {
             debugClickTask(first.id)
         }
     }
+    /// Test hook: a real mouse click (down + up, through the window's own
+    /// event handling, the card not key) on the middle of this to-do's
+    /// Home row, `count` clicks.
+    static func debugMouseClickTask(_ id: UUID, count: Int = 1) {
+        let panel = instance()
+        guard let row = panel.tasksBox.arrangedSubviews.compactMap({ $0 as? DockTaskRow }).first(where: { $0.taskID == id })
+        else { return }
+        panel.contentView?.layoutSubtreeIfNeeded()
+        let frame = row.convert(row.bounds, to: nil)
+        let point = NSPoint(x: frame.minX + 60, y: frame.midY)
+        // On screen for the window server, but invisible and letting real
+        // clicks through, so a person at this Mac is not disturbed.
+        let wasVisible = panel.isVisible, alpha = panel.alphaValue, ignored = panel.ignoresMouseEvents
+        panel.alphaValue = 0
+        panel.ignoresMouseEvents = true
+        if !wasVisible { panel.orderFrontRegardless() }
+        defer {
+            if !wasVisible { panel.orderOut(nil) }
+            panel.alphaValue = alpha
+            panel.ignoresMouseEvents = ignored
+        }
+        for click in 1...count {
+            for type in [NSEvent.EventType.leftMouseDown, .leftMouseUp] {
+                guard let event = NSEvent.mouseEvent(with: type, location: point, modifierFlags: [], timestamp: ProcessInfo.processInfo.systemUptime,
+                                                     windowNumber: panel.windowNumber, context: nil, eventNumber: 0,
+                                                     clickCount: click, pressure: type == .leftMouseDown ? 1 : 0) else { continue }
+                panel.sendEvent(event)
+            }
+        }
+        RunLoop.main.run(until: Date().addingTimeInterval(0.4))
+    }
+    static var debugCardIsKey: Bool { instance().isKeyWindow }
+
     /// Test hook: a single click on the Home row of this to-do.
     static func debugClickTask(_ id: UUID) {
         instance().tasksBox.arrangedSubviews.compactMap { $0 as? DockTaskRow }.first { $0.taskID == id }?.debugClick()
@@ -2764,11 +2797,6 @@ final class DockTaskRow: NSView {
         label.makeSingleLine()
         label.toolTip = L("Click for details, double-click to edit")
         label.translatesAutoresizingMaskIntoConstraints = false
-        let click = NSClickGestureRecognizer(target: self, action: #selector(clicked(_:)))
-        addGestureRecognizer(click)
-        let doubleClick = NSClickGestureRecognizer(target: self, action: #selector(openTask))
-        doubleClick.numberOfClicksRequired = 2
-        addGestureRecognizer(doubleClick)
 
         addSubview(checkbox)
         addSubview(label)
@@ -2808,13 +2836,20 @@ final class DockTaskRow: NSView {
         TaskStore.shared.complete(task.id)
     }
 
-    /// A click anywhere but the checkbox.
-    @objc private func clicked(_ gesture: NSClickGestureRecognizer) {
-        guard !checkbox.frame.insetBy(dx: -2, dy: -2).contains(gesture.location(in: self)) else { return }
-        onPreview?(task.id)
+    // The card is usually not the key window (OmniHub stays in the
+    // background), so the row takes the first click itself; the label
+    // under the pointer would otherwise swallow it.
+    override func acceptsFirstMouse(for event: NSEvent?) -> Bool { true }
+
+    override func hitTest(_ point: NSPoint) -> NSView? {
+        guard let hit = super.hitTest(point) else { return nil }
+        return hit === checkbox || hit.isDescendant(of: checkbox) ? hit : self
     }
 
-    @objc private func openTask() { onOpen?(task.id) }
+    /// One click: the details; a second: open it in the Agenda.
+    override func mouseDown(with event: NSEvent) {
+        if event.clickCount >= 2 { onOpen?(task.id) } else { onPreview?(task.id) }
+    }
 
     /// The previewed to-do: a band of light sweeps along the row inside
     /// a softly pulsing outline (still, with Reduce Motion).

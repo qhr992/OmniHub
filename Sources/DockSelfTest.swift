@@ -26,7 +26,10 @@ enum DockSelfTest {
         let homeClash = FloatingDockPanel.debugTaskRowClashes
         check("Home to-do rows stay on one line, clear of the time", homeClash.isEmpty, homeClash.joined(separator: "; "))
         let preview = FloatingDockPanel.debugPreview
-        FloatingDockPanel.debugClickTask(long.id)
+        // A real click, the card not key (OmniHub in the background).
+        FloatingDockPanel.debugMouseClickTask(long.id)
+        check("a real click on a Home to-do, the card not key (key=\(FloatingDockPanel.debugCardIsKey)), previews it",
+              preview.taskID == long.id, "preview=\(String(describing: preview.taskID))")
         check("a click on a Home to-do previews it in full: title, time, the note with its line breaks; the card stays",
               preview.taskID == long.id && preview.debugText.contains("title=" + long.title)
                 && preview.debugText.contains("note=" + note) && FloatingDockPanel.debugPage == .home,
@@ -39,11 +42,17 @@ enum DockSelfTest {
         if let dir = ProcessInfo.processInfo.environment["OMNIHUB_SNAP_DIR"] {
             preview.debugSnapshot(to: URL(fileURLWithPath: dir).appendingPathComponent("dock-task-preview.png"))
         }
-        FloatingDockPanel.debugClickTask(long.id)
+        FloatingDockPanel.debugMouseClickTask(long.id)
         check("a second click on the same to-do closes the preview and drops the highlight",
               preview.taskID == nil && FloatingDockPanel.debugPreviewedRows.isEmpty)
 
-        FloatingDockPanel.debugClickTask(long.id)
+        FloatingDockPanel.debugMouseClickTask(long.id, count: 2)
+        check("a real double-click, the card not key, opens the to-do in the Agenda (no preview left)",
+              preview.taskID == nil && FloatingDockPanel.debugPage == .tasks && FloatingDockPanel.agenda.editingID == long.id,
+              "page=\(String(describing: FloatingDockPanel.debugPage)) preview=\(String(describing: preview.taskID))")
+        FloatingDockPanel.closeCard()
+        _ = FloatingDockPanel.debugCardSize(page: .home, x: 0.5, y: 0)
+        FloatingDockPanel.debugMouseClickTask(long.id)
         preview.debugEdit()
         let agenda = FloatingDockPanel.agenda
         check("Edit in the preview opens the to-do in the Agenda for editing",
@@ -51,15 +60,36 @@ enum DockSelfTest {
               agenda.debugForm)
         let form = agenda.debugFormHeights
         let scrolled = agenda.debugEditNoteAtEnd()
-        check("editing a note of a dozen lines: the field stays at 4 lines (\(Int(form.note)) pt) and scrolls to its end "
+        check("editing a note of a dozen lines: the box stays at 4 lines (\(Int(form.note)) pt) with a scroller and scrolls to its end "
               + "(\(Int(scrolled)) pt); the list keeps \(Int(form.list)) pt",
-              form.note <= 76 && scrolled > 20 && form.list >= 120)
+              form.note <= 76 && agenda.debugNoteScrollerShown && scrolled > 20 && form.list >= 120)
         let cardClash = agenda.debugRowClashes
         check("Agenda rows on the card: long title and note on one line each, clear of the time",
               cardClash.isEmpty, cardClash.joined(separator: "; "))
         snap("dock-agenda-long.png")
         FloatingDockPanel.closeCard()
-        _ = MainWindow.debugOpen(.tasks)
+        let window = MainWindow.debugOpen(.tasks)
+        agenda.focus(taskID: long.id)
+        let windowForm = agenda.debugFormHeights
+        check("main window Agenda, the same note: 4 lines (\(Int(windowForm.note)) pt) with a scroller, the list keeps \(Int(windowForm.list)) pt",
+              agenda.editingID == long.id && windowForm.note <= 76 && agenda.debugNoteScrollerShown && windowForm.list >= 200)
+        if let dir = ProcessInfo.processInfo.environment["OMNIHUB_SNAP_DIR"], let view = window.contentView {
+            view.layoutSubtreeIfNeeded()
+            view.display()
+            if let rep = view.bitmapImageRepForCachingDisplay(in: view.bounds) {
+                view.cacheDisplay(in: view.bounds, to: rep)
+                try? rep.representation(using: .png, properties: [:])?
+                    .write(to: URL(fileURLWithPath: dir).appendingPathComponent("main-agenda-long-note.png"))
+            }
+        }
+        agenda.debugNoteKey(#selector(NSResponder.insertNewlineIgnoringFieldEditor(_:)))
+        let newLine = agenda.debugForm.contains("note=" + note + "\n button=")
+        agenda.debugNoteKey(#selector(NSResponder.insertNewline(_:)))
+        let savedNote = TaskStore.shared.item(long.id)?.note ?? ""
+        check("in the note box Option-Return adds a line and Return saves",
+              newLine && agenda.editingID == nil && savedNote == note,
+              "editing=\(String(describing: agenda.editingID)) note ends \(savedNote.suffix(12).debugDescription)")
+        agenda.focus(taskID: long.id)
         let windowClash = agenda.debugRowClashes
         check("Agenda rows in the main window: the same", windowClash.isEmpty, windowClash.joined(separator: "; "))
         _ = MainWindow.debugOpen(.home)
