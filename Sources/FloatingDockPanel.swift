@@ -15,7 +15,7 @@ import UniformTypeIdentifiers
 /// through the entry icons or the global hotkeys. Hovering always opens Home
 /// and folds away when the pointer leaves; a page opened by a click or a
 /// hotkey stays until it is closed (× at the top right, Esc, or the hotkey).
-final class FloatingDockPanel: NSPanel, EscDismissable {
+final class FloatingDockPanel: NSPanel, EscDismissable, NSTextFieldDelegate {
     private static var shared: FloatingDockPanel?
 
     private static let iconSize: CGFloat = 40
@@ -127,6 +127,12 @@ final class FloatingDockPanel: NSPanel, EscDismissable {
     private let modeButton = NSButton()
     private let likeButton = NSButton()
     private let tasksBox = NSStackView()
+    private let quickAdd = NSTextField()
+    private lazy var taskPreview: TaskPreview = {
+        let preview = TaskPreview()
+        preview.onEdit = { [weak self] id in self?.openTask(id) }
+        return preview
+    }()
     private let tasksScroll = NSScrollView()
     private var tasksHeight: NSLayoutConstraint!
     private var sideWidth: NSLayoutConstraint!
@@ -732,7 +738,28 @@ final class FloatingDockPanel: NSPanel, EscDismissable {
         let taskHeader = NSTextField(labelWithString: L("To-dos"))
         taskHeader.font = .systemFont(ofSize: 10, weight: .semibold)
         taskHeader.textColor = NSColor(white: 1, alpha: 0.45)
-        side.addArrangedSubview(taskHeader)
+        // + : a field for a new to-do right here (Return adds, Esc closes).
+        let addTodo = HomeLink("", symbol: "plus", color: NSColor(white: 1, alpha: 0.7)) { [weak self] in
+            self?.toggleQuickAdd()
+        }
+        addTodo.toolTip = L("New to-do")
+        addTodo.setAccessibilityTitle(L("New to-do"))
+        let headerGap = NSView()
+        headerGap.setContentHuggingPriority(.init(1), for: .horizontal)
+        let taskHeaderRow = NSStackView(views: [taskHeader, headerGap, addTodo])
+        taskHeaderRow.spacing = 6
+        side.addArrangedSubview(taskHeaderRow)
+        taskHeaderRow.widthAnchor.constraint(equalTo: side.widthAnchor, constant: -10).isActive = true
+        quickAdd.placeholderString = L("New to-do")
+        quickAdd.font = .systemFont(ofSize: 12)
+        quickAdd.bezelStyle = .roundedBezel
+        quickAdd.target = self
+        quickAdd.action = #selector(addQuickTodo)
+        quickAdd.cell?.sendsActionOnEndEditing = false
+        quickAdd.delegate = self
+        quickAdd.isHidden = true
+        side.addArrangedSubview(quickAdd)
+        quickAdd.widthAnchor.constraint(equalTo: side.widthAnchor, constant: -10).isActive = true
         // The to-dos scroll (trackpad or wheel) once there are more than fit.
         let document = FlippedView()
         document.translatesAutoresizingMaskIntoConstraints = false
@@ -903,12 +930,17 @@ final class FloatingDockPanel: NSPanel, EscDismissable {
         } else {
             for task in all {
                 let row = DockTaskRow(task: task)
-                row.onOpen = { [weak self] id in self?.openTask(id) }
+                row.onOpen = { [weak self] id in self?.taskPreview.close(); self?.openTask(id) }
+                row.onPreview = { [weak self, weak row] id in
+                    guard let self, let row else { return }
+                    self.previewTask(id, from: row)
+                }
                 row.translatesAutoresizingMaskIntoConstraints = false
                 tasksBox.addArrangedSubview(row)
                 row.widthAnchor.constraint(equalTo: tasksBox.widthAnchor).isActive = true
             }
         }
+        followPreview()
         // Up to "Show on Home" rows are visible; the rest scroll.
         let visibleRows = max(1, Prefs.int("dock.taskLimit", 5))
         let rowHeight: CGFloat = 22, spacing = tasksBox.spacing
@@ -1949,7 +1981,7 @@ final class FloatingDockPanel: NSPanel, EscDismissable {
         guard expanded, !heldOpen, focused else { return }
         DispatchQueue.main.async { [weak self] in
             guard let self, self.expanded, !self.heldOpen, self.focused, !self.isKeyWindow,
-                  NSApp.modalWindow == nil else { return }
+                  NSApp.modalWindow == nil, !self.taskPreview.hasKeyboard else { return }
             self.closeCard()
         }
     }
@@ -1959,6 +1991,9 @@ final class FloatingDockPanel: NSPanel, EscDismissable {
             if Prefs.bool("dock.hidden") { orderOut(nil) }
             return
         }
+        taskPreview.close()
+        quickAdd.stringValue = ""
+        quickAdd.isHidden = true
         let hadKeyboard = isKeyWindow
         let canAnimate = !Self.headless && isVisible && !dragging && !cardView.isHidden && !transitioning
         let oldRect = cardView.frame.offsetBy(dx: frame.minX, dy: frame.minY)
@@ -2007,7 +2042,7 @@ final class FloatingDockPanel: NSPanel, EscDismissable {
         // A small margin (and the strip between ball and card) keeps it
         // from flickering shut on the way across.
         let stay = openedFrom.map { window.union($0) } ?? window
-        if stay.insetBy(dx: -10, dy: -10).contains(mouse) {
+        if stay.insetBy(dx: -10, dy: -10).contains(mouse) || taskPreview.contains(mouse) {
             awaySince = nil
             return
         }
@@ -2190,7 +2225,96 @@ final class FloatingDockPanel: NSPanel, EscDismissable {
         agendaPane.focus(taskID: id)
     }
 
+    /// + on Home: shows (or hides) the field for a new to-do, with the
+    /// keyboard in it.
+    private func toggleQuickAdd() {
+        taskPreview.close()
+        if !quickAdd.isHidden {
+            closeQuickAdd()
+            return
+        }
+        quickAdd.isHidden = false
+        applyGeometry()
+        guard !Self.headless else { return }
+        // Typing needs the keyboard; it goes back when the card closes.
+        focused = true
+        FocusKeeper.activateSelf()
+        makeKeyAndOrderFront(nil)
+        makeFirstResponder(quickAdd)
+    }
+
+    private func closeQuickAdd() {
+        quickAdd.stringValue = ""
+        quickAdd.isHidden = true
+        if firstResponder === quickAdd.currentEditor() { makeFirstResponder(nil) }
+        applyGeometry()
+    }
+
+    /// Return in the field: adds the to-do (no date) and stays ready for
+    /// the next one; an empty field just closes.
+    @objc private func addQuickTodo() {
+        let title = quickAdd.stringValue.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !title.isEmpty else {
+            closeQuickAdd()
+            return
+        }
+        TaskStore.shared.add(title: title, note: "", due: nil)
+        quickAdd.stringValue = ""
+    }
+
+    func control(_ control: NSControl, textView: NSTextView, doCommandBy selector: Selector) -> Bool {
+        guard control === quickAdd, selector == #selector(NSResponder.cancelOperation(_:)) else { return false }
+        closeQuickAdd()
+        return true
+    }
+
+    static func debugQuickAdd(_ title: String?) {
+        let panel = instance()
+        if panel.quickAdd.isHidden { panel.toggleQuickAdd() }
+        guard let title else { return }
+        panel.quickAdd.stringValue = title
+        panel.addQuickTodo()
+    }
+    static func debugQuickAddEscape() { instance().closeQuickAdd() }
+    static var debugQuickAddShown: Bool { !instance().quickAdd.isHidden }
+    static var debugQuickAddFrame: (field: NSRect, card: NSRect) {
+        let panel = instance()
+        panel.contentView?.layoutSubtreeIfNeeded()
+        return (panel.quickAdd.convert(panel.quickAdd.bounds, to: nil), panel.cardView.frame)
+    }
+
+    /// A click on a Home to-do: its details in a preview (a second click
+    /// on the same one closes it).
+    private func previewTask(_ id: UUID, from row: NSView) {
+        guard let task = TaskStore.shared.item(id) else { return }
+        if taskPreview.taskID == id {
+            taskPreview.close()
+            return
+        }
+        taskPreview.show(task, from: row)
+    }
+
+    /// The Home rows were rebuilt: the preview moves to its to-do's new
+    /// row, or closes once that to-do is gone.
+    private func followPreview() {
+        guard let id = taskPreview.taskID else { return }
+        let row = tasksBox.arrangedSubviews.compactMap { $0 as? DockTaskRow }.first { $0.taskID == id }
+        guard let row, let task = TaskStore.shared.item(id), !task.done, page == .home, expanded else {
+            taskPreview.close()
+            return
+        }
+        taskPreview.show(task, from: row)
+    }
+
     static func debugOpenTask(_ id: UUID) { instance().openTask(id) }
+    static var debugPreview: TaskPreview { instance().taskPreview }
+    /// Test hook: a single click on the Home row of this to-do.
+    static func debugClickTask(_ id: UUID) {
+        instance().tasksBox.arrangedSubviews.compactMap { $0 as? DockTaskRow }.first { $0.taskID == id }?.debugClick()
+    }
+    static var debugTaskRowClashes: [String] {
+        instance().tasksBox.arrangedSubviews.compactMap { $0 as? DockTaskRow }.flatMap(\.debugClash)
+    }
     @objc private func nextTrack() { MediaObserver.shared.nextTrack() }
     @objc private func previousTrack() { MediaObserver.shared.previousTrack() }
     @objc private func openMediaOwner() { MediaObserver.shared.activateOwner() }
@@ -2578,22 +2702,30 @@ final class ClickableStack: NSStackView {
 
 final class DockTaskRow: NSView {
     private let task: TaskItem
+    private let checkbox = NSButton(checkboxWithTitle: "", target: nil, action: nil)
+    private let label = NSTextField(labelWithString: "")
+    private var dueLabel: NSTextField?
     /// Double-click: open this to-do in the Agenda.
     var onOpen: ((UUID) -> Void)?
+    /// Single click: show its details.
+    var onPreview: ((UUID) -> Void)?
+    var taskID: UUID { task.id }
 
     init(task: TaskItem) {
         self.task = task
         super.init(frame: .zero)
-        let checkbox = NSButton(checkboxWithTitle: "", target: self, action: #selector(markDone))
+        checkbox.target = self
+        checkbox.action = #selector(markDone)
         checkbox.translatesAutoresizingMaskIntoConstraints = false
         checkbox.toolTip = L("Mark done")
-        let label = NSTextField(labelWithString: task.title)
+        label.stringValue = task.title.singleLine
         label.font = .systemFont(ofSize: 12)
         label.textColor = .white
-        label.lineBreakMode = .byTruncatingTail
-        label.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
-        label.toolTip = (task.note.isEmpty ? task.title : "\(task.title)\n\(task.note)") + "\n" + L("Double-click to open")
+        label.makeSingleLine()
+        label.toolTip = L("Click for details, double-click to edit")
         label.translatesAutoresizingMaskIntoConstraints = false
+        let click = NSClickGestureRecognizer(target: self, action: #selector(clicked(_:)))
+        addGestureRecognizer(click)
         let doubleClick = NSClickGestureRecognizer(target: self, action: #selector(openTask))
         doubleClick.numberOfClicksRequired = 2
         addGestureRecognizer(doubleClick)
@@ -2617,6 +2749,7 @@ final class DockTaskRow: NSView {
             dueLabel.setContentCompressionResistancePriority(.required, for: .horizontal)
             dueLabel.translatesAutoresizingMaskIntoConstraints = false
             addSubview(dueLabel)
+            self.dueLabel = dueLabel
             constraints += [
                 dueLabel.trailingAnchor.constraint(equalTo: trailingAnchor),
                 dueLabel.centerYAnchor.constraint(equalTo: centerYAnchor),
@@ -2635,7 +2768,16 @@ final class DockTaskRow: NSView {
         TaskStore.shared.complete(task.id)
     }
 
+    /// A click anywhere but the checkbox.
+    @objc private func clicked(_ gesture: NSClickGestureRecognizer) {
+        guard !checkbox.frame.insetBy(dx: -2, dy: -2).contains(gesture.location(in: self)) else { return }
+        onPreview?(task.id)
+    }
+
     @objc private func openTask() { onOpen?(task.id) }
+
+    func debugClick() { onPreview?(task.id) }
+    var debugClash: [String] { LabelClash.find(in: self, labels: [label], beside: dueLabel) }
 }
 
 /// A thin knob without a track, for lists on the dark card.

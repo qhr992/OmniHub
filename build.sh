@@ -46,6 +46,7 @@ SOURCES=(
   Sources/ScrollSelfTest.swift
   Sources/Store.swift
   Sources/TaskStore.swift
+  Sources/TaskPreview.swift
   Sources/ClipboardStore.swift
   Sources/MediaObserver.swift
   Sources/PlayerActivity.swift

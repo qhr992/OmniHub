@@ -63,7 +63,7 @@ enum HelpContent {
             ("Players that take no commands", "Music is preferred over video when both play. Players that do not accept commands from other apps (such as NetEase) are worked through their own menus, which needs Accessibility.")
         ]),
         section("Agenda", "checklist", Tint.red, [
-            ("To-dos", "Add a to-do with an optional note, date and time; done ones are kept in a history."),
+            ("To-dos", "Add a to-do with an optional note, date and time; done ones are kept in a history. On the floating dock's Home, click a to-do to see it in full; double-click to edit it."),
             ("Calendar", "The month view reads your Mac Calendar (macOS asks once). Pick a day to see its events and to-dos.")
         ]),
         section("Terminal", "terminal.fill", Tint.orange, [
@@ -142,7 +142,7 @@ enum HelpContent {
             ("不接受命令的播放器", "音乐和视频同时播放时优先显示音乐。对不接受外部命令的播放器（如网易云音乐），OmniHub 改用它自己的菜单来控制，需要辅助功能权限。")
         ]),
         section("事项", "checklist", Tint.red, [
-            ("待办", "添加待办，可以带备注、日期和时间；已完成的保留在历史记录里。"),
+            ("待办", "添加待办，可以带备注、日期和时间；已完成的保留在历史记录里。在悬浮球展开的首页上，单击待办可以预览完整内容，双击进入编辑。"),
             ("日历", "月历读取 macOS「日历」里的日程（系统会询问一次）。点某一天查看当天的日程和待办。")
         ]),
         section("终端", "terminal.fill", Tint.orange, [

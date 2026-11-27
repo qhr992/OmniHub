@@ -19,6 +19,83 @@ enum DockSelfTest {
         FloatingDockPanel.snapshot(to: URL(fileURLWithPath: dir).appendingPathComponent(name))
     }
 
+    /// A to-do with a long title and a note of several lines: one line in
+    /// every row, clear of the time; the Home preview shows all of it.
+    private static func longTodo(_ long: TaskItem, note: String) {
+        _ = FloatingDockPanel.debugCardSize(page: .home, x: 0.5, y: 0)
+        let homeClash = FloatingDockPanel.debugTaskRowClashes
+        check("Home to-do rows stay on one line, clear of the time", homeClash.isEmpty, homeClash.joined(separator: "; "))
+        let preview = FloatingDockPanel.debugPreview
+        FloatingDockPanel.debugClickTask(long.id)
+        check("a click on a Home to-do previews it in full: title, time, the note with its line breaks; the card stays",
+              preview.taskID == long.id && preview.debugText.contains("title=" + long.title)
+                && preview.debugText.contains("note=" + note) && FloatingDockPanel.debugPage == .home,
+              preview.debugText)
+        if let dir = ProcessInfo.processInfo.environment["OMNIHUB_SNAP_DIR"] {
+            preview.debugSnapshot(to: URL(fileURLWithPath: dir).appendingPathComponent("dock-task-preview.png"))
+        }
+        FloatingDockPanel.debugClickTask(long.id)
+        check("a second click on the same to-do closes the preview", preview.taskID == nil)
+
+        FloatingDockPanel.debugClickTask(long.id)
+        preview.debugEdit()
+        let agenda = FloatingDockPanel.agenda
+        check("Edit in the preview opens the to-do in the Agenda for editing",
+              preview.taskID == nil && FloatingDockPanel.debugPage == .tasks && agenda.editingID == long.id,
+              agenda.debugForm)
+        let form = agenda.debugFormHeights
+        let scrolled = agenda.debugEditNoteAtEnd()
+        check("editing a note of a dozen lines: the field stays at 4 lines (\(Int(form.note)) pt) and scrolls to its end "
+              + "(\(Int(scrolled)) pt); the list keeps \(Int(form.list)) pt",
+              form.note <= 76 && scrolled > 20 && form.list >= 120)
+        let cardClash = agenda.debugRowClashes
+        check("Agenda rows on the card: long title and note on one line each, clear of the time",
+              cardClash.isEmpty, cardClash.joined(separator: "; "))
+        snap("dock-agenda-long.png")
+        FloatingDockPanel.closeCard()
+        _ = MainWindow.debugOpen(.tasks)
+        let windowClash = agenda.debugRowClashes
+        check("Agenda rows in the main window: the same", windowClash.isEmpty, windowClash.joined(separator: "; "))
+        _ = MainWindow.debugOpen(.home)
+
+        _ = FloatingDockPanel.debugCardSize(page: .home, x: 0.5, y: 0)
+        FloatingDockPanel.debugClickTask(long.id)
+        preview.debugMarkDone()
+        check("Mark done in the preview finishes the to-do and closes the preview",
+              TaskStore.shared.item(long.id)?.done == true && preview.taskID == nil)
+        FloatingDockPanel.closeCard()
+    }
+
+    /// + beside To-dos on Home: a field right there; Return adds a to-do
+    /// with no date and keeps the field for the next; Esc or an empty
+    /// Return closes it.
+    private static func quickAddTodo() {
+        let store = TaskStore.shared
+        let before = Set(store.items.map(\.id))
+        _ = FloatingDockPanel.debugCardSize(page: .home, x: 0.5, y: 0)
+        let rowsBefore = FloatingDockPanel.debugTasks.rows
+        FloatingDockPanel.debugQuickAdd(nil)
+        let frames = FloatingDockPanel.debugQuickAddFrame
+        check("+ on Home shows a field for a new to-do inside the card",
+              FloatingDockPanel.debugQuickAddShown && frames.card.contains(frames.field) && frames.field.width > 150,
+              "\(frames)")
+        snap("dock-home-quick-add.png")
+        FloatingDockPanel.debugQuickAdd("selftest quick to-do")
+        let added = store.items.filter { !before.contains($0.id) }
+        check("Return adds it to the Home list (no date); the field stays for the next one",
+              added.count == 1 && added.first?.title == "selftest quick to-do" && added.first?.due == nil
+                && FloatingDockPanel.debugTasks.rows == rowsBefore + 1 && FloatingDockPanel.debugQuickAddShown,
+              "added=\(added.map(\.title)) rows \(rowsBefore)→\(FloatingDockPanel.debugTasks.rows)")
+        FloatingDockPanel.debugQuickAdd("  ")
+        check("Return on an empty field closes it, adding nothing",
+              !FloatingDockPanel.debugQuickAddShown && store.items.filter { !before.contains($0.id) }.count == 1)
+        FloatingDockPanel.debugQuickAdd(nil)
+        FloatingDockPanel.debugQuickAddEscape()
+        check("Esc closes the field", !FloatingDockPanel.debugQuickAddShown)
+        for item in store.items where !before.contains(item.id) { store.remove(item.id) }
+        FloatingDockPanel.closeCard()
+    }
+
     static func run() {
         CalendarSource.allowPrompt = false
         FloatingDockPanel.headless = true
@@ -78,6 +155,18 @@ enum DockSelfTest {
               "pinned=\(pinned) same page=\(samePage) after Home=\(FloatingDockPanel.debugHeld) page=\(String(describing: FloatingDockPanel.debugPage))")
         FloatingDockPanel.closeCard()
         FloatingDockPanel.terminateShells()
+
+        // ---- a long to-do: rows hold it; a click on Home shows it in full
+        let longNote = "第一行说明：" + String(repeating: "这是一段很长的内容说明，用来检查会不会溢出。", count: 4)
+            + (1...10).map { "\n(\($0)) 第 \($0) 条意见：内容较长的一行说明" }.joined()
+        if let long = TaskStore.shared.add(title: "selftest long " + String(repeating: "标题很长的事项", count: 8),
+                                           note: longNote, due: Date().addingTimeInterval(3600)) {
+            longTodo(long, note: longNote)
+            TaskStore.shared.remove(long.id)
+        } else {
+            check("a long test to-do can be added", false)
+        }
+        quickAddTodo()
 
         // ---- Home to-dos: scrolling, double-click opens the Agenda
         let store = TaskStore.shared

@@ -96,3 +96,13 @@ final class TaskStore {
         NotificationCenter.default.post(name: .tasksChanged, object: nil)
     }
 }
+
+extension String {
+    /// Line breaks folded into spaces, for a one-line label.
+    var singleLine: String {
+        split(whereSeparator: \.isNewline)
+            .map { $0.trimmingCharacters(in: .whitespaces) }
+            .filter { !$0.isEmpty }
+            .joined(separator: " ")
+    }
+}

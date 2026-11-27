@@ -60,6 +60,11 @@ final class AgendaPane: NSView, DockPage {
     private let dayLabel = NSTextField(labelWithString: "")
     private let titleField = NSTextField()
     private let noteField = NSTextField()
+    private static let noteLines = 4
+    private static var noteFieldMaxHeight: CGFloat {
+        let font = NSFont.systemFont(ofSize: 12)
+        return ceil(font.ascender - font.descender + font.leading) * CGFloat(noteLines) + 8
+    }
     private let dateToggle = FocusButton(checkboxWithTitle: L("Date"), target: nil, action: nil)
     private let datePicker = NSDatePicker()
     private let addButton = FocusButton(title: L("Add"), target: nil, action: nil)
@@ -106,6 +111,27 @@ final class AgendaPane: NSView, DockPage {
 
     /// Test hook: jump to a day.
     func debugSelect(_ date: Date) { select(Calendar.current.startOfDay(for: date)) }
+    var debugRowClashes: [String] {
+        layoutSubtreeIfNeeded()
+        return listStack.arrangedSubviews.compactMap { $0 as? TaskRowView }.flatMap(\.debugClash)
+    }
+    /// Test hook: edit the note with the caret at its end; returns how far
+    /// the field scrolled down to show it.
+    func debugEditNoteAtEnd() -> CGFloat {
+        guard window?.makeFirstResponder(noteField) == true, let editor = noteField.currentEditor() as? NSTextView else { return -1 }
+        let end = NSRange(location: (editor.string as NSString).length, length: 0)
+        editor.setSelectedRange(end)
+        editor.scrollRangeToVisible(end)
+        let offset = editor.enclosingScrollView?.contentView.bounds.minY ?? editor.visibleRect.minY
+        window?.makeFirstResponder(nil)
+        return offset
+    }
+
+    /// Test hook: the note field's height and how much of the list shows.
+    var debugFormHeights: (note: CGFloat, list: CGFloat) {
+        layoutSubtreeIfNeeded()
+        return (noteField.frame.height, listStack.enclosingScrollView?.frame.height ?? 0)
+    }
     func debugShowDone(_ done: Bool) { modePicker.selectedSegment = done ? 1 : 0; reload() }
     var debugForm: String {
         "title=\(titleField.stringValue) note=\(noteField.stringValue) button=\(addButton.title) "
@@ -221,6 +247,12 @@ final class AgendaPane: NSView, DockPage {
         titleField.cell?.sendsActionOnEndEditing = false
         noteField.placeholderString = L("Note (optional)")
         noteField.font = .systemFont(ofSize: 12)
+        // A long note shows its first lines (the last ends in "…") and
+        // scrolls inside the field while editing, so the list keeps its room.
+        noteField.maximumNumberOfLines = Self.noteLines
+        noteField.cell?.truncatesLastVisibleLine = true
+        noteField.translatesAutoresizingMaskIntoConstraints = false
+        noteField.heightAnchor.constraint(lessThanOrEqualToConstant: Self.noteFieldMaxHeight).isActive = true
         noteField.target = self
         noteField.action = #selector(addTask)
         noteField.cell?.sendsActionOnEndEditing = false
@@ -727,6 +759,9 @@ final class FlippedView: NSView {
 
 final class TaskRowView: NSView {
     private let task: TaskItem
+    private var labels: [NSTextField] = []
+    private var dueLabel: NSTextField?
+    var debugClash: [String] { LabelClash.find(in: self, labels: labels, beside: dueLabel) }
     private let checkbox = NSButton(checkboxWithTitle: "", target: nil, action: nil)
     /// Double-click: edit this to-do.
     var onOpen: ((UUID) -> Void)?
@@ -754,27 +789,31 @@ final class TaskRowView: NSView {
         checkbox.toolTip = task.done ? L("Reopen") : L("Mark done")
         checkbox.translatesAutoresizingMaskIntoConstraints = false
 
-        let title = NSTextField(labelWithString: task.title)
+        let title = NSTextField(labelWithString: task.title.singleLine)
         if task.done {
-            title.attributedStringValue = NSAttributedString(string: task.title, attributes: [
+            title.attributedStringValue = NSAttributedString(string: task.title.singleLine, attributes: [
                 .strikethroughStyle: NSUnderlineStyle.single.rawValue,
                 .foregroundColor: NSColor(white: 1, alpha: 0.5),
                 .font: NSFont.systemFont(ofSize: 13, weight: .medium)])
         }
         title.font = .systemFont(ofSize: 13, weight: .medium)
-        title.lineBreakMode = .byTruncatingTail
+        title.makeSingleLine()
         title.translatesAutoresizingMaskIntoConstraints = false
 
-        let note = NSTextField(labelWithString: task.note)
+        // The note on one line (its line breaks as spaces); the whole of
+        // it shows as the tooltip.
+        let note = NSTextField(labelWithString: task.note.singleLine)
         note.font = .systemFont(ofSize: 11)
         note.textColor = .secondaryLabelColor
-        note.lineBreakMode = .byTruncatingTail
+        note.makeSingleLine()
         note.isHidden = task.note.isEmpty
+        if !task.note.isEmpty { note.toolTip = task.note }
         note.translatesAutoresizingMaskIntoConstraints = false
 
         addSubview(checkbox)
         addSubview(title)
         addSubview(note)
+        labels = [title, note]
 
         var constraints: [NSLayoutConstraint] = [
             heightAnchor.constraint(greaterThanOrEqualToConstant: task.note.isEmpty ? 36 : 50),
@@ -802,11 +841,14 @@ final class TaskRowView: NSView {
             let dueLabel = NSTextField(labelWithString: formatter.string(from: due))
             dueLabel.font = .monospacedDigitSystemFont(ofSize: 10, weight: .regular)
             dueLabel.textColor = !task.done && due < Date() ? .systemRed : .tertiaryLabelColor
+            dueLabel.setContentCompressionResistancePriority(.required, for: .horizontal)
             dueLabel.translatesAutoresizingMaskIntoConstraints = false
             addSubview(dueLabel)
+            self.dueLabel = dueLabel
             constraints += [
                 dueLabel.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -12),
-                dueLabel.centerYAnchor.constraint(equalTo: title.centerYAnchor)
+                dueLabel.centerYAnchor.constraint(equalTo: title.centerYAnchor),
+                title.trailingAnchor.constraint(lessThanOrEqualTo: dueLabel.leadingAnchor, constant: -8)
             ]
         }
 
