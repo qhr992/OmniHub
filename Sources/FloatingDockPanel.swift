@@ -131,6 +131,7 @@ final class FloatingDockPanel: NSPanel, EscDismissable, NSTextFieldDelegate {
     private lazy var taskPreview: TaskPreview = {
         let preview = TaskPreview()
         preview.onEdit = { [weak self] id in self?.openTask(id) }
+        preview.onChange = { [weak self] id in self?.markPreviewed(id) }
         return preview
     }()
     private let tasksScroll = NSScrollView()
@@ -258,6 +259,7 @@ final class FloatingDockPanel: NSPanel, EscDismissable, NSTextFieldDelegate {
             + "layout=\(shared.isHorizontal ? "horizontal" : "vertical") "
             + "ball=\(geometry.ball) card=\(geometry.card.map { "\($0)" } ?? "-") "
             + "mediaShown=\(!shared.player.isHidden) taskRows=\(shared.tasksBox.arrangedSubviews.count) "
+            + "taskPreview=\(shared.taskPreview.debugFrame) lit=\(debugPreviewedRows.map { $0.moving ? "moving" : "still" }) "
             + "holiday=\"\(shared.holidayLabel.isHidden ? "" : shared.holidayLabel.stringValue)\" "
             + "pill=\(shared.compactLabel.isHidden ? "bars" : "text") text=\"\(shared.compactLabel.text)\" "
             + "overflow=\(Int(shared.compactLabel.overflow)) rolls=\(shared.compactLabel.rolls) "
@@ -2276,6 +2278,19 @@ final class FloatingDockPanel: NSPanel, EscDismissable, NSTextFieldDelegate {
         panel.addQuickTodo()
     }
     static func debugQuickAddEscape() { instance().closeQuickAdd() }
+    /// Test hook: Home to-do rows the card actually shows (inside both the
+    /// list's scroll area and the card), and the list's height.
+    static var debugVisibleTaskRows: (rows: Int, listHeight: CGFloat) {
+        let panel = instance()
+        panel.contentView?.layoutSubtreeIfNeeded()
+        let list = panel.tasksScroll.convert(panel.tasksScroll.bounds, to: nil)
+        let card = panel.cardView.frame
+        let shown = panel.tasksBox.arrangedSubviews.compactMap { $0 as? DockTaskRow }.filter { row in
+            let frame = row.convert(row.bounds, to: nil)
+            return list.contains(frame) && card.contains(frame) && row.window != nil && !row.isHiddenOrHasHiddenAncestor
+        }
+        return (shown.count, list.height)
+    }
     static var debugQuickAddShown: Bool { !instance().quickAdd.isHidden }
     static var debugQuickAddFrame: (field: NSRect, card: NSRect) {
         let panel = instance()
@@ -2291,7 +2306,16 @@ final class FloatingDockPanel: NSPanel, EscDismissable, NSTextFieldDelegate {
             taskPreview.close()
             return
         }
-        taskPreview.show(task, from: row)
+        taskPreview.show(task, row: row, card: cardScreenRect)
+    }
+
+    private var cardScreenRect: NSRect { cardView.frame.offsetBy(dx: frame.minX, dy: frame.minY) }
+
+    /// The previewed to-do's row gets the moving highlight; the rest none.
+    private func markPreviewed(_ id: UUID?) {
+        for row in tasksBox.arrangedSubviews.compactMap({ $0 as? DockTaskRow }) {
+            row.setPreviewed(row.taskID == id)
+        }
     }
 
     /// The Home rows were rebuilt: the preview moves to its to-do's new
@@ -2303,14 +2327,30 @@ final class FloatingDockPanel: NSPanel, EscDismissable, NSTextFieldDelegate {
             taskPreview.close()
             return
         }
-        taskPreview.show(task, from: row)
+        taskPreview.show(task, row: row, card: cardScreenRect)
     }
 
     static func debugOpenTask(_ id: UUID) { instance().openTask(id) }
     static var debugPreview: TaskPreview { instance().taskPreview }
+    /// Debug route: Home held open on screen, the first to-do previewed.
+    static func debugPreviewOnScreen() {
+        show()
+        let panel = instance()
+        panel.present(.home, hold: true, focus: false)
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.6) {
+            guard let first = TaskStore.shared.active.first else { return }
+            debugClickTask(first.id)
+        }
+    }
     /// Test hook: a single click on the Home row of this to-do.
     static func debugClickTask(_ id: UUID) {
         instance().tasksBox.arrangedSubviews.compactMap { $0 as? DockTaskRow }.first { $0.taskID == id }?.debugClick()
+    }
+    /// Test hook: the Home rows with the highlight, and whether it moves.
+    static var debugPreviewedRows: [(id: UUID, moving: Bool)] {
+        instance().tasksBox.arrangedSubviews.compactMap { $0 as? DockTaskRow }.compactMap { row in
+            row.debugHighlight.map { (row.taskID, $0) }
+        }
     }
     static var debugTaskRowClashes: [String] {
         instance().tasksBox.arrangedSubviews.compactMap { $0 as? DockTaskRow }.flatMap(\.debugClash)
@@ -2775,6 +2815,63 @@ final class DockTaskRow: NSView {
     }
 
     @objc private func openTask() { onOpen?(task.id) }
+
+    /// The previewed to-do: a band of light sweeps along the row inside
+    /// a softly pulsing outline (still, with Reduce Motion).
+    private var highlight: CAGradientLayer?
+
+    func setPreviewed(_ on: Bool) {
+        guard on != (highlight != nil) else { return }
+        guard on else {
+            highlight?.removeFromSuperlayer()
+            highlight = nil
+            return
+        }
+        wantsLayer = true
+        let tint = MonthGridView.taskColor
+        let band = CAGradientLayer()
+        band.colors = [tint.withAlphaComponent(0.12), tint.withAlphaComponent(0.42), tint.withAlphaComponent(0.12)].map(\.cgColor)
+        band.locations = [0, 0.5, 1]
+        band.startPoint = CGPoint(x: 0, y: 0.5)
+        band.endPoint = CGPoint(x: 1, y: 0.5)
+        band.cornerRadius = 6
+        band.borderWidth = 1
+        band.borderColor = tint.withAlphaComponent(0.7).cgColor
+        CATransaction.begin()
+        CATransaction.setDisableActions(true)
+        band.frame = bounds.insetBy(dx: -2, dy: -1)
+        layer?.insertSublayer(band, at: 0)
+        CATransaction.commit()
+        if !NSWorkspace.shared.accessibilityDisplayShouldReduceMotion {
+            let sweep = CABasicAnimation(keyPath: "locations")
+            sweep.fromValue = [-0.6, -0.3, 0]
+            sweep.toValue = [1, 1.3, 1.6]
+            sweep.duration = 1.8
+            sweep.repeatCount = .infinity
+            sweep.timingFunction = CAMediaTimingFunction(name: .easeInEaseOut)
+            band.add(sweep, forKey: "sweep")
+            let pulse = CABasicAnimation(keyPath: "opacity")
+            pulse.fromValue = 1
+            pulse.toValue = 0.65
+            pulse.duration = 0.9
+            pulse.autoreverses = true
+            pulse.repeatCount = .infinity
+            band.add(pulse, forKey: "pulse")
+        }
+        highlight = band
+    }
+
+    override func layout() {
+        super.layout()
+        guard let highlight else { return }
+        CATransaction.begin()
+        CATransaction.setDisableActions(true)
+        highlight.frame = bounds.insetBy(dx: -2, dy: -1)
+        CATransaction.commit()
+    }
+
+    /// Test hook: nil without the highlight, else whether it moves.
+    var debugHighlight: Bool? { highlight.map { $0.animation(forKey: "sweep") != nil } }
 
     func debugClick() { onPreview?(task.id) }
     var debugClash: [String] { LabelClash.find(in: self, labels: [label], beside: dueLabel) }

@@ -494,6 +494,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         case "toggle/dock": FloatingDockPanel.toggle()
         case "expand-dock": FloatingDockPanel.show(); FloatingDockPanel.expandForDemo()
         case "collapse-dock": FloatingDockPanel.closeCard()
+        case "debug/task-preview": FloatingDockPanel.debugPreviewOnScreen()
         case "terminal-demo": FloatingDockPanel.terminal.debugWrite("printf 'OmniHub terminal ok\\n'; pwd\n")
         case "playpause": MediaObserver.shared.togglePlayPause()
         case "debug/media/mode": MediaObserver.shared.cyclePlayMode()

@@ -31,11 +31,17 @@ enum DockSelfTest {
               preview.taskID == long.id && preview.debugText.contains("title=" + long.title)
                 && preview.debugText.contains("note=" + note) && FloatingDockPanel.debugPage == .home,
               preview.debugText)
+        let lit = FloatingDockPanel.debugPreviewedRows
+        let still = NSWorkspace.shared.accessibilityDisplayShouldReduceMotion
+        check("the previewed row, and only it, gets the moving highlight" + (still ? " (still: Reduce Motion is on)" : ""),
+              lit.count == 1 && lit.first?.id == long.id && (lit.first?.moving == !still), "\(lit)")
+        snap("dock-home-previewed.png")
         if let dir = ProcessInfo.processInfo.environment["OMNIHUB_SNAP_DIR"] {
             preview.debugSnapshot(to: URL(fileURLWithPath: dir).appendingPathComponent("dock-task-preview.png"))
         }
         FloatingDockPanel.debugClickTask(long.id)
-        check("a second click on the same to-do closes the preview", preview.taskID == nil)
+        check("a second click on the same to-do closes the preview and drops the highlight",
+              preview.taskID == nil && FloatingDockPanel.debugPreviewedRows.isEmpty)
 
         FloatingDockPanel.debugClickTask(long.id)
         preview.debugEdit()
@@ -74,6 +80,20 @@ enum DockSelfTest {
         let before = Set(store.items.map(\.id))
         _ = FloatingDockPanel.debugCardSize(page: .home, x: 0.5, y: 0)
         let rowsBefore = FloatingDockPanel.debugTasks.rows
+        // With music playing (player beside the list) and without: the
+        // to-dos show as soon as Home opens, before + is touched.
+        for playing in [true, false] {
+            var song = MediaObserver.NowPlaying()
+            song.title = "Test Song"; song.artist = "Tester"; song.isPlaying = true; song.duration = 200; song.elapsed = 20
+            MediaObserver.shared.debugInject(playing ? song : nil)
+            FloatingDockPanel.closeCard()
+            _ = FloatingDockPanel.debugCardSize(page: .home, x: 0.5, y: 0)
+            let visible = FloatingDockPanel.debugVisibleTaskRows
+            let expected = min(store.active.count, max(1, Prefs.int("dock.taskLimit", 5)))
+            check("Home \(playing ? "with music playing" : "with nothing playing"): \(visible.rows) of \(expected) to-dos show "
+                  + "before + (list \(Int(visible.listHeight)) pt)", visible.rows == expected && expected > 0)
+            snap(playing ? "dock-home-playing.png" : "dock-home-quiet.png")
+        }
         FloatingDockPanel.debugQuickAdd(nil)
         let frames = FloatingDockPanel.debugQuickAddFrame
         check("+ on Home shows a field for a new to-do inside the card",

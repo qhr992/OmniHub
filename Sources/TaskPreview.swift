@@ -1,20 +1,29 @@
 import AppKit
 
-/// One to-do in full, from the card's Home: the whole title, when it is
+/// One to-do in full, beside the card's Home: the whole title, when it is
 /// due and the complete note, with Edit (opens it in the Agenda) and Mark
-/// done. A click on a Home row shows it; a click anywhere else closes it.
-final class TaskPreview: NSObject, NSPopoverDelegate {
+/// done. A click on a Home row shows it; a second click, another row, or
+/// the card folding closes or moves it.
+///
+/// A non-activating panel like the card itself (a popover would close at
+/// once while OmniHub is not the active app), riding as the card's child.
+final class TaskPreview: NSObject {
     /// Edit: the to-do to open in the Agenda.
     var onEdit: ((UUID) -> Void)?
+    /// The to-do shown, or nil once closed.
+    var onChange: ((UUID?) -> Void)?
     /// The to-do shown (headless: the one that would be).
     private(set) var taskID: UUID?
 
     private static let width: CGFloat = 300
     private static let inset: CGFloat = 14
+    private static let gap: CGFloat = 8
     private static let noteLine: CGFloat = 16
     private static let maxNoteHeight: CGFloat = noteLine * 14
 
-    private let popover = NSPopover()
+    private let panel = NSPanel(contentRect: NSRect(x: 0, y: 0, width: 300, height: 200),
+                                styleMask: [.borderless, .nonactivatingPanel], backing: .buffered, defer: true)
+    private let surface = NSVisualEffectView()
     private let titleLabel = NSTextField(wrappingLabelWithString: "")
     private let whenLabel = NSTextField(labelWithString: "")
     private let noteLabel = NSTextField(wrappingLabelWithString: "")
@@ -26,36 +35,75 @@ final class TaskPreview: NSObject, NSPopoverDelegate {
     override init() {
         noteHeight = noteScroll.heightAnchor.constraint(equalToConstant: 16)
         super.init()
-        popover.behavior = .transient
-        popover.appearance = NSAppearance(named: .darkAqua)
-        popover.delegate = self
-        let controller = NSViewController()
-        controller.view = buildContent()
-        popover.contentViewController = controller
+        panel.isFloatingPanel = true
+        panel.becomesKeyOnlyIfNeeded = true
+        panel.hidesOnDeactivate = false
+        panel.isOpaque = false
+        panel.backgroundColor = .clear
+        panel.hasShadow = true
+        panel.isReleasedWhenClosed = false
+        panel.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary, .transient]
+        panel.appearance = NSAppearance(named: .darkAqua)
+        surface.material = .hudWindow
+        surface.blendingMode = .behindWindow
+        surface.state = .active
+        surface.wantsLayer = true
+        surface.layer?.cornerRadius = 12
+        surface.layer?.masksToBounds = true
+        surface.layer?.borderWidth = 1
+        surface.layer?.borderColor = NSColor(white: 1, alpha: 0.12).cgColor
+        panel.contentView = surface
+        _ = buildContent()
+        place(content, in: surface)
     }
 
-    var isShown: Bool { popover.isShown }
-    private var window: NSWindow? { popover.contentViewController?.view.window }
+    private func place(_ view: NSView, in host: NSView) {
+        view.translatesAutoresizingMaskIntoConstraints = false
+        host.addSubview(view)
+        NSLayoutConstraint.activate([
+            view.topAnchor.constraint(equalTo: host.topAnchor),
+            view.leadingAnchor.constraint(equalTo: host.leadingAnchor),
+            view.trailingAnchor.constraint(equalTo: host.trailingAnchor),
+            view.bottomAnchor.constraint(equalTo: host.bottomAnchor)
+        ])
+    }
+
+    var isShown: Bool { panel.isVisible }
     /// The pointer is over the preview (the card stays open meanwhile).
     func contains(_ point: NSPoint) -> Bool {
-        guard popover.isShown, let window else { return false }
-        return window.frame.insetBy(dx: -6, dy: -6).contains(point)
+        panel.isVisible && panel.frame.insetBy(dx: -Self.gap - 2, dy: -6).contains(point)
     }
-    var hasKeyboard: Bool { popover.isShown && window?.isKeyWindow == true }
+    var hasKeyboard: Bool { panel.isVisible && panel.isKeyWindow }
+    var debugFrame: String { panel.isVisible ? NSStringFromRect(panel.frame) : "-" }
 
-    func show(_ task: TaskItem, from view: NSView) {
+    /// Shows `task` beside the card (`card`, in screen coordinates), level
+    /// with its row (`row`).
+    func show(_ task: TaskItem, row: NSView, card: NSRect) {
         fill(task)
         taskID = task.id
-        guard view.window?.isVisible == true else { return }
-        popover.show(relativeTo: view.bounds, of: view, preferredEdge: .minY)
+        onChange?(task.id)
+        guard let parent = row.window, parent.isVisible else { return }
+        let size = content.fittingSize
+        let rowRect = parent.convertToScreen(row.convert(row.bounds, to: nil))
+        let screen = (parent.screen ?? NSScreen.main)?.visibleFrame ?? card
+        var x = card.maxX + Self.gap
+        if x + size.width > screen.maxX - 4 { x = card.minX - Self.gap - size.width }
+        x = min(max(x, screen.minX + 4), screen.maxX - size.width - 4)
+        var y = rowRect.maxY + 10 - size.height
+        y = min(max(y, screen.minY + 4), screen.maxY - size.height - 4)
+        panel.level = parent.level
+        panel.setFrame(NSRect(x: x, y: y, width: size.width, height: size.height), display: true)
+        if panel.parent == nil { parent.addChildWindow(panel, ordered: .above) }
+        panel.orderFront(nil)
     }
 
     func close() {
+        let wasShowing = taskID != nil
         taskID = nil
-        if popover.isShown { popover.performClose(nil) }
+        if let parent = panel.parent { parent.removeChildWindow(panel) }
+        panel.orderOut(nil)
+        if wasShowing { onChange?(nil) }
     }
-
-    func popoverDidClose(_ notification: Notification) { taskID = nil }
 
     // MARK: Content
 
@@ -182,8 +230,8 @@ final class TaskPreview: NSObject, NSPopoverDelegate {
             try? rep.representation(using: .png, properties: [:])?.write(to: url)
         }
         content.removeFromSuperview()
-        content.translatesAutoresizingMaskIntoConstraints = false
         window.contentView = nil
+        place(content, in: surface)
     }
 
     private final class DarkBacking: NSView {
